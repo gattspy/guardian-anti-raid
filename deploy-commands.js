@@ -6,11 +6,15 @@ const {
     SlashCommandBuilder
 } = require("discord.js");
 
+// ==============================
+// COMMANDS
+// ==============================
+
 const commands = [
 
     new SlashCommandBuilder()
         .setName("lockdown")
-        .setDescription("Immediately lock the server during a raid."),
+        .setDescription("Lock the server during a raid."),
 
     new SlashCommandBuilder()
         .setName("unlock")
@@ -22,11 +26,38 @@ const commands = [
 
 ].map(command => command.toJSON());
 
+// ==============================
+// CHECK ENVIRONMENT VARIABLES
+// ==============================
+
+if (!process.env.DISCORD_TOKEN) {
+    console.error("❌ DISCORD_TOKEN is missing.");
+    process.exit(1);
+}
+
+if (!process.env.CLIENT_ID) {
+    console.error("❌ CLIENT_ID is missing.");
+    process.exit(1);
+}
+
+if (!process.env.GUILD_ID) {
+    console.error("❌ GUILD_ID is missing.");
+    process.exit(1);
+}
+
+// ==============================
+// DISCORD API
+// ==============================
+
 const rest = new REST({
     version: "10"
 }).setToken(process.env.DISCORD_TOKEN);
 
-(async () => {
+// ==============================
+// REGISTER COMMANDS
+// ==============================
+
+async function deployCommands() {
 
     try {
 
@@ -42,14 +73,15 @@ const rest = new REST({
             }
         );
 
-        console.log(
-            "Slash commands registered successfully."
-        );
+        console.log("✅ Slash commands registered successfully.");
 
     } catch (error) {
 
+        console.error("❌ Failed to register commands:");
         console.error(error);
 
+        process.exit(1);
     }
+}
 
-})();
+deployCommands();
