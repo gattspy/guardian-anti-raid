@@ -6,9 +6,9 @@ const config = require("./config");
 
 const guildStates = new Map();
 
-// ==============================
+// ========================================
 // SERVER STATE
-// ==============================
+// ========================================
 
 function getGuildState(guildId) {
 
@@ -18,17 +18,17 @@ function getGuildState(guildId) {
             joins: [],
             lockdown: false,
             lockdownTimer: null,
-            quarantineRoleId: null,
             whitelistedUsers: new Set()
         });
+
     }
 
     return guildStates.get(guildId);
 }
 
-// ==============================
+// ========================================
 // RECORD JOIN
-// ==============================
+// ========================================
 
 function recordJoin(guildId, userId) {
 
@@ -51,9 +51,9 @@ function recordJoin(guildId, userId) {
     return state.joins.length;
 }
 
-// ==============================
-// SUSPICIOUS ACCOUNT
-// ==============================
+// ========================================
+// ACCOUNT AGE
+// ========================================
 
 function isSuspiciousAccount(member) {
 
@@ -61,31 +61,13 @@ function isSuspiciousAccount(member) {
         Date.now() -
         member.user.createdTimestamp;
 
-    return (
-        accountAge <
-        config.suspiciousAccountAge
-    );
+    return accountAge <
+        config.suspiciousAccountAge;
 }
 
-// ==============================
-// EXTREMELY SUSPICIOUS
-// ==============================
-
-function isExtremelySuspicious(member) {
-
-    const accountAge =
-        Date.now() -
-        member.user.createdTimestamp;
-
-    return (
-        accountAge <
-        config.extremeAccountAge
-    );
-}
-
-// ==============================
+// ========================================
 // WHITELIST
-// ==============================
+// ========================================
 
 function isWhitelisted(member) {
 
@@ -97,105 +79,35 @@ function isWhitelisted(member) {
     );
 }
 
-// ==============================
-// QUARANTINE ROLE
-// ==============================
-
-async function getQuarantineRole(guild) {
-
-    const state =
-        getGuildState(guild.id);
-
-    if (state.quarantineRoleId) {
-
-        const existingRole =
-            guild.roles.cache.get(
-                state.quarantineRoleId
-            );
-
-        if (existingRole) {
-            return existingRole;
-        }
-    }
-
-    let role =
-        guild.roles.cache.find(
-            role =>
-                role.name === "Raid Quarantine"
-        );
-
-    if (!role) {
-
-        role = await guild.roles.create({
-            name: "Raid Quarantine",
-            reason:
-                "Guardian Anti-Raid quarantine role"
-        });
-    }
-
-    state.quarantineRoleId = role.id;
-
-    return role;
-}
-
-// ==============================
-// QUARANTINE MEMBER
-// ==============================
-
-async function quarantineMember(member) {
-
-    try {
-
-        if (!member.manageable) {
-            return false;
-        }
-
-        const role =
-            await getQuarantineRole(
-                member.guild
-            );
-
-        await member.roles.add(
-            role,
-            "Guardian Anti-Raid: suspicious account"
-        );
-
-        return true;
-
-    } catch (error) {
-
-        console.error(
-            `Failed to quarantine ${member.user.tag}:`,
-            error
-        );
-
-        return false;
-    }
-}
-
-// ==============================
+// ========================================
 // KICK MEMBER
-// ==============================
+// ========================================
 
-async function kickMember(
-    member,
-    reason
-) {
+async function kickMember(member, reason) {
 
     try {
 
         if (!member.kickable) {
+
+            console.log(
+                `[KICK FAILED] ${member.user.tag} is not kickable.`
+            );
+
             return false;
         }
 
         await member.kick(reason);
 
+        console.log(
+            `[KICKED] ${member.user.tag}`
+        );
+
         return true;
 
     } catch (error) {
 
         console.error(
-            `Failed to kick ${member.user.tag}:`,
+            `[KICK ERROR] ${member.user.tag}:`,
             error
         );
 
@@ -203,9 +115,9 @@ async function kickMember(
     }
 }
 
-// ==============================
+// ========================================
 // LOCKDOWN
-// ==============================
+// ========================================
 
 async function lockdown(
     guild,
@@ -251,14 +163,16 @@ async function lockdown(
                             `Guardian Anti-Raid: ${reason}`
                     }
                 );
+
             }
 
         } catch (error) {
 
             console.error(
-                `Could not lock ${channel.name}:`,
+                `[LOCK ERROR] ${channel.name}:`,
                 error.message
             );
+
         }
     }
 
@@ -271,9 +185,9 @@ async function lockdown(
     return true;
 }
 
-// ==============================
+// ========================================
 // UNLOCK
-// ==============================
+// ========================================
 
 async function unlock(guild) {
 
@@ -321,14 +235,16 @@ async function unlock(guild) {
                             "Guardian Anti-Raid lockdown ended"
                     }
                 );
+
             }
 
         } catch (error) {
 
             console.error(
-                `Could not unlock ${channel.name}:`,
+                `[UNLOCK ERROR] ${channel.name}:`,
                 error.message
             );
+
         }
     }
 
@@ -339,9 +255,9 @@ async function unlock(guild) {
     return true;
 }
 
-// ==============================
+// ========================================
 // LOCKDOWN STATUS
-// ==============================
+// ========================================
 
 function isLockedDown(guildId) {
 
@@ -350,37 +266,43 @@ function isLockedDown(guildId) {
     ).lockdown;
 }
 
-// ==============================
-// WHITELIST
-// ==============================
+// ========================================
+// WHITELIST USER
+// ========================================
 
 function whitelistUser(
     guildId,
     userId
 ) {
 
-    getGuildState(
-        guildId
-    ).whitelistedUsers.add(
+    const state =
+        getGuildState(guildId);
+
+    state.whitelistedUsers.add(
         userId
     );
 }
+
+// ========================================
+// REMOVE WHITELIST
+// ========================================
 
 function removeWhitelist(
     guildId,
     userId
 ) {
 
-    getGuildState(
-        guildId
-    ).whitelistedUsers.delete(
+    const state =
+        getGuildState(guildId);
+
+    state.whitelistedUsers.delete(
         userId
     );
 }
 
-// ==============================
+// ========================================
 // RECENT JOINS
-// ==============================
+// ========================================
 
 function getRecentJoinCount(guildId) {
 
@@ -398,21 +320,30 @@ function getRecentJoinCount(guildId) {
     return state.joins.length;
 }
 
-// ==============================
+// ========================================
 // EXPORTS
-// ==============================
+// ========================================
 
 module.exports = {
+
     recordJoin,
+
     isSuspiciousAccount,
-    isExtremelySuspicious,
+
     isWhitelisted,
-    quarantineMember,
+
     kickMember,
+
     lockdown,
+
     unlock,
+
     isLockedDown,
+
     whitelistUser,
+
     removeWhitelist,
+
     getRecentJoinCount
+
 };
