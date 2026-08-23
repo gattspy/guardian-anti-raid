@@ -6,10 +6,6 @@ const {
     SlashCommandBuilder
 } = require("discord.js");
 
-// ==============================
-// COMMANDS
-// ==============================
-
 const commands = [
 
     new SlashCommandBuilder()
@@ -26,10 +22,6 @@ const commands = [
 
 ].map(command => command.toJSON());
 
-// ==============================
-// CHECK ENVIRONMENT
-// ==============================
-
 if (!process.env.DISCORD_TOKEN) {
     console.error("❌ DISCORD_TOKEN is missing.");
     process.exit(1);
@@ -40,31 +32,19 @@ if (!process.env.CLIENT_ID) {
     process.exit(1);
 }
 
-// ==============================
-// DISCORD API
-// ==============================
-
 const rest = new REST({
     version: "10"
 }).setToken(process.env.DISCORD_TOKEN);
-
-// ==============================
-// DEPLOY GLOBAL COMMANDS
-// ==============================
 
 async function deployCommands() {
 
     try {
 
-        console.log("================================");
-        console.log(" Guardian Anti-Raid");
-        console.log(" Global Command Deployment");
-        console.log("================================");
+        console.log(
+            "🔄 Registering global slash commands..."
+        );
 
-        console.log("");
-        console.log("🔄 Registering global commands...");
-
-        const result = await rest.put(
+        await rest.put(
             Routes.applicationCommands(
                 process.env.CLIENT_ID
             ),
@@ -73,23 +53,32 @@ async function deployCommands() {
             }
         );
 
-        console.log("");
-        console.log("✅ Global commands registered!");
-        console.log("");
-
-        for (const command of result) {
-            console.log(`/${command.name}`);
-        }
-
-        console.log("");
         console.log(
-            "Commands are registered globally."
+            "✅ Global slash commands registered!"
+        );
+
+        console.log(
+            "Commands:"
+        );
+
+        console.log(
+            "/lockdown"
+        );
+
+        console.log(
+            "/unlock"
+        );
+
+        console.log(
+            "/raidstatus"
         );
 
     } catch (error) {
 
-        console.error("");
-        console.error("❌ Command deployment failed.");
+        console.error(
+            "❌ Failed to register commands:"
+        );
+
         console.error(error);
 
         process.exit(1);
