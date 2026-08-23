@@ -1,3 +1,6 @@
+const dashboard = require("./dashboard");
+const app = express();
+app.use("/dashboard", dashboard);
 require("dotenv").config();
 
 const express = require("express");
@@ -34,6 +37,19 @@ app.get("/", (req, res) => {
 });
 
 app.listen(PORT, "0.0.0.0", () => {
+    app.locals.bot = client;
+
+app.locals.config = config;
+
+app.locals.lockdown = lockdown;
+
+app.locals.unlock = unlock;
+
+app.locals.getRaidState = function(guildId) {
+    return {
+        lockdown: isLockedDown(guildId)
+    };
+};
     console.log(`Web server running on port ${PORT}`);
 });
 
