@@ -1,10 +1,8 @@
 const {
-    ChannelType,
-    PermissionFlagsBits
+    ChannelType
 } = require("discord.js");
 
 const config = require("./config");
-
 const database = require("./database");
 
 // ========================================
@@ -197,13 +195,20 @@ async function lockdown(
         }
     }
 
+    // ====================================
+    // AUTOMATIC UNLOCK
+    // ====================================
+
     state.lockdownTimer =
         setTimeout(
             async () => {
 
                 try {
+
                     await unlock(guild);
+
                 } catch (error) {
+
                     console.error(
                         "Automatic unlock error:",
                         error
@@ -358,6 +363,7 @@ function getAuthorizedUsers(guildId) {
 
 // ========================================
 // ADD BLOCKED WORD
+// STORED IN POSTGRES
 // ========================================
 
 async function addBlockedWord(
@@ -365,58 +371,38 @@ async function addBlockedWord(
     word
 ) {
 
-    return await database.addBlockedWord(
-        guildId,
-        word
-    );
+    if (!guildId || !word) {
+        return false;
+    }
+
+    try {
+
+        const result =
+            await database.addBlockedWord(
+                guildId,
+                word
+            );
+
+        console.log(
+            `[DATABASE] Added blocked word "${word}" to ${guildId}`
+        );
+
+        return result;
+
+    } catch (error) {
+
+        console.error(
+            "[DATABASE] Failed to add blocked word:",
+            error
+        );
+
+        return false;
+    }
 }
 
 // ========================================
 // REMOVE BLOCKED WORD
-// ========================================
-
-async function removeBlockedWord(
-    guildId,
-    word
-) {
-
-    return await database.removeBlockedWord(
-        guildId,
-        word
-    );
-}
-
-// ========================================
-// GET BLOCKED WORDS
-// ========================================
-
-async function getBlockedWords(
-    guildId
-) {
-
-    return await database.getBlockedWords(
-        guildId
-    );
-}
-
-// ========================================
-// FIND BLOCKED WORD
-// ========================================
-
-async function findBlockedWord(
-    guildId,
-    message
-) {
-
-    return await database.findBlockedWord(
-        guildId,
-        message
-    );
-}
-
-// ========================================
-// REMOVE BLOCKED WORD
-// DATABASE VERSION
+// STORED IN POSTGRES
 // ========================================
 
 async function removeBlockedWord(
@@ -428,25 +414,22 @@ async function removeBlockedWord(
         return false;
     }
 
-    const cleanWord =
-        word.trim().toLowerCase();
-
     try {
 
-        const removed =
-            await db.removeBlockedWord(
+        const result =
+            await database.removeBlockedWord(
                 guildId,
-                cleanWord
+                word
             );
 
-        if (removed) {
+        if (result) {
 
             console.log(
-                `[WORD REMOVE] ${cleanWord} removed from ${guildId}`
+                `[DATABASE] Removed blocked word "${word}" from ${guildId}`
             );
         }
 
-        return removed;
+        return result;
 
     } catch (error) {
 
@@ -461,10 +444,12 @@ async function removeBlockedWord(
 
 // ========================================
 // GET BLOCKED WORDS
-// DATABASE VERSION
+// STORED IN POSTGRES
 // ========================================
 
-async function getBlockedWords(guildId) {
+async function getBlockedWords(
+    guildId
+) {
 
     if (!guildId) {
         return [];
@@ -472,7 +457,7 @@ async function getBlockedWords(guildId) {
 
     try {
 
-        return await db.getBlockedWords(
+        return await database.getBlockedWords(
             guildId
         );
 
@@ -489,7 +474,7 @@ async function getBlockedWords(guildId) {
 
 // ========================================
 // FIND BLOCKED WORD
-// DATABASE VERSION
+// STORED IN POSTGRES
 // ========================================
 
 async function findBlockedWord(
@@ -504,7 +489,7 @@ async function findBlockedWord(
     try {
 
         const words =
-            await db.getBlockedWords(
+            await database.getBlockedWords(
                 guildId
             );
 
@@ -584,7 +569,8 @@ function getRecentJoinCount(guildId) {
     const state =
         getGuildState(guildId);
 
-    const now = Date.now();
+    const now =
+        Date.now();
 
     state.joins =
         state.joins.filter(
@@ -602,6 +588,7 @@ function getRecentJoinCount(guildId) {
 
 module.exports = {
 
+    // Raid protection
     recordJoin,
     isSuspiciousAccount,
     isWhitelisted,
@@ -612,14 +599,17 @@ module.exports = {
     isLockedDown,
     getRecentJoinCount,
 
+    // Whitelist
     whitelistUser,
     removeWhitelist,
 
+    // Authorization
     authorizeUser,
     unauthorizeUser,
     isAuthorizedUser,
     getAuthorizedUsers,
 
+    // PostgreSQL blocked words
     addBlockedWord,
     removeBlockedWord,
     getBlockedWords,
