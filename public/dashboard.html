@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Guardian Anti-Raid</title>
+
+    <link rel="stylesheet" href="/dashboard.css">
+</head>
+
+<body>
+
+    <div class="sidebar">
+
+        <div class="logo">
+            🛡️ Guardian
+        </div>
+
+        <button class="nav active" onclick="showPage('overview')">
+            📊 Overview
+        </button>
+
+        <button class="nav" onclick="showPage('protection')">
+            🛡️ Protection
+        </button>
+
+        <button class="nav" onclick="showPage('whitelist')">
+            👥 Whitelist
+        </button>
+
+        <button class="nav" onclick="showPage('logs')">
+            🚨 Raid Logs
+        </button>
+
+        <button class="nav" onclick="showPage('settings')">
+            ⚙️ Settings
+        </button>
+
+    </div>
+
+
+    <main>
+
+        <header>
+            <div>
+                <h1>Guardian Anti-Raid</h1>
+                <p>Discord server security dashboard</p>
+            </div>
+
+            <div id="botStatus" class="status">
+                Checking...
+            </div>
+        </header>
+
+
+        <!-- OVERVIEW -->
+
+        <section id="overview" class="page active-page">
+
+            <h2>Overview</h2>
+
+            <div class="cards">
+
+                <div class="card">
+                    <span>Bot Status</span>
+                    <strong id="status">Checking...</strong>
+                </div>
+
+                <div class="card">
+                    <span>Protection</span>
+                    <strong id="protectionStatus">Checking...</strong>
+                </div>
+
+                <div class="card">
+                    <span>Lockdown</span>
+                    <strong id="lockdownStatus">Checking...</strong>
+                </div>
+
+                <div class="card">
+                    <span>Suspicious Accounts</span>
+                    <strong id="suspiciousAccounts">0</strong>
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- PROTECTION -->
+
+        <section id="protection" class="page">
+
+            <h2>Anti-Raid Protection</h2>
+
+            <div class="panel">
+
+                <h3>Protection System</h3>
+
+                <p>
+                    Enable or disable Guardian's anti-raid protection.
+                </p>
+
+                <label class="switch">
+                    <input
+                        type="checkbox"
+                        id="protectionToggle"
+                        onchange="toggleProtection()"
+                    >
+                    <span class="slider"></span>
+                </label>
+
+            </div>
+
+
+            <div class="panel">
+
+                <h3>Server Lockdown</h3>
+
+                <p>
+                    Lock the server when an active raid is detected.
+                </p>
+
+                <button
+                    class="danger"
+                    onclick="lockServer()"
+                >
+                    🔒 Lock Server
+                </button>
+
+                <button
+                    class="success"
+                    onclick="unlockServer()"
+                >
+                    🔓 Unlock Server
+                </button>
+
+            </div>
+
+        </section>
+
+
+        <!-- WHITELIST -->
+
+        <section id="whitelist" class="page">
+
+            <h2>Whitelist</h2>
+
+            <div class="panel">
+
+                <h3>Add User</h3>
+
+                <input
+                    id="whitelistUser"
+                    placeholder="Discord User ID"
+                >
+
+                <button onclick="addWhitelist()">
+                    Add User
+                </button>
+
+            </div>
+
+            <div class="panel">
+
+                <h3>Whitelisted Users</h3>
+
+                <div id="whitelistList">
+                    Loading...
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- LOGS -->
+
+        <section id="logs" class="page">
+
+            <h2>Raid Logs</h2>
+
+            <div class="panel">
+
+                <div id="raidLogs">
+                    No raid logs yet.
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- SETTINGS -->
+
+        <section id="settings" class="page">
+
+            <h2>Settings</h2>
+
+            <div class="panel">
+
+                <h3>Raid Join Threshold</h3>
+
+                <input
+                    type="number"
+                    id="raidThreshold"
+                    value="5"
+                    min="2"
+                >
+
+                <p>
+                    Number of joins within the detection window
+                    required to trigger raid protection.
+                </p>
+
+                <button onclick="saveSettings()">
+                    Save Settings
+                </button>
+
+            </div>
+
+        </section>
+
+    </main>
+
+    <script src="/dashboard.js"></script>
+
+</body>
+</html>
