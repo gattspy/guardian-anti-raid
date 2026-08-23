@@ -27,7 +27,7 @@ const commands = [
 ].map(command => command.toJSON());
 
 // ==============================
-// ENVIRONMENT
+// CHECK ENVIRONMENT
 // ==============================
 
 if (!process.env.DISCORD_TOKEN) {
@@ -56,9 +56,15 @@ async function deployCommands() {
 
     try {
 
-        console.log("🔄 Registering global slash commands...");
+        console.log("================================");
+        console.log(" Guardian Anti-Raid");
+        console.log(" Global Command Deployment");
+        console.log("================================");
 
-        await rest.put(
+        console.log("");
+        console.log("🔄 Registering global commands...");
+
+        const result = await rest.put(
             Routes.applicationCommands(
                 process.env.CLIENT_ID
             ),
@@ -67,23 +73,23 @@ async function deployCommands() {
             }
         );
 
-        console.log("================================");
-        console.log("✅ GLOBAL COMMANDS REGISTERED");
-        console.log("================================");
+        console.log("");
+        console.log("✅ Global commands registered!");
+        console.log("");
+
+        for (const command of result) {
+            console.log(`/${command.name}`);
+        }
 
         console.log("");
-        console.log("Available commands:");
-
-        console.log("/lockdown");
-        console.log("/unlock");
-        console.log("/raidstatus");
-
-        console.log("");
-        console.log("Commands are now registered globally.");
+        console.log(
+            "Commands are registered globally."
+        );
 
     } catch (error) {
 
-        console.error("❌ Failed to register commands:");
+        console.error("");
+        console.error("❌ Command deployment failed.");
         console.error(error);
 
         process.exit(1);
