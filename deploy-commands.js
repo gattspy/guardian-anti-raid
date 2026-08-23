@@ -6,29 +6,36 @@ const {
     SlashCommandBuilder
 } = require("discord.js");
 
-// ==============================
-// COMMANDS
-// ==============================
+// ========================================
+// GUARDIAN ANTI-RAID COMMANDS
+// ========================================
 
 const commands = [
 
+    // /lockdown
     new SlashCommandBuilder()
         .setName("lockdown")
-        .setDescription("Lock the server during a raid."),
+        .setDescription("Immediately lock the server during a raid."),
 
+    // /unlock
     new SlashCommandBuilder()
         .setName("unlock")
-        .setDescription("Remove the server lockdown."),
+        .setDescription("Remove the current server lockdown."),
 
+    // /raidstatus
     new SlashCommandBuilder()
         .setName("raidstatus")
         .setDescription("Check the current anti-raid status.")
 
 ].map(command => command.toJSON());
 
-// ==============================
+// ========================================
 // CHECK ENVIRONMENT VARIABLES
-// ==============================
+// ========================================
+
+console.log("========================================");
+console.log(" Guardian Anti-Raid Command Deployment");
+console.log("========================================");
 
 if (!process.env.DISCORD_TOKEN) {
     console.error("❌ DISCORD_TOKEN is missing.");
@@ -45,23 +52,29 @@ if (!process.env.GUILD_ID) {
     process.exit(1);
 }
 
-// ==============================
-// DISCORD API
-// ==============================
+console.log("✅ DISCORD_TOKEN found");
+console.log(`✅ CLIENT_ID: ${process.env.CLIENT_ID}`);
+console.log(`✅ GUILD_ID: ${process.env.GUILD_ID}`);
+console.log(`✅ Commands: ${commands.length}`);
+
+// ========================================
+// DISCORD REST API
+// ========================================
 
 const rest = new REST({
     version: "10"
 }).setToken(process.env.DISCORD_TOKEN);
 
-// ==============================
-// REGISTER COMMANDS
-// ==============================
+// ========================================
+// DEPLOY COMMANDS
+// ========================================
 
 async function deployCommands() {
 
     try {
 
-        console.log("Registering slash commands...");
+        console.log("");
+        console.log("🔄 Registering slash commands...");
 
         await rest.put(
             Routes.applicationGuildCommands(
@@ -73,15 +86,53 @@ async function deployCommands() {
             }
         );
 
-        console.log("✅ Slash commands registered successfully.");
+        console.log("");
+        console.log("========================================");
+        console.log(" ✅ COMMANDS REGISTERED SUCCESSFULLY");
+        console.log("========================================");
+        console.log("");
+        console.log("Available commands:");
+
+        for (const command of commands) {
+            console.log(`  /${command.name}`);
+        }
+
+        console.log("");
 
     } catch (error) {
 
-        console.error("❌ Failed to register commands:");
+        console.error("");
+        console.error("========================================");
+        console.error(" ❌ COMMAND DEPLOYMENT FAILED");
+        console.error("========================================");
+
         console.error(error);
+
+        if (error.code === 401) {
+            console.error("");
+            console.error("Your DISCORD_TOKEN is invalid.");
+        }
+
+        if (error.code === 403) {
+            console.error("");
+            console.error(
+                "The bot does not have permission to register commands."
+            );
+        }
+
+        if (error.code === 404) {
+            console.error("");
+            console.error(
+                "Check your CLIENT_ID and GUILD_ID."
+            );
+        }
 
         process.exit(1);
     }
 }
+
+// ========================================
+// START
+// ========================================
 
 deployCommands();
