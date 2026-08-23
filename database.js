@@ -6,15 +6,13 @@ const { Pool } = require("pg");
 // DATABASE CONFIGURATION
 // ========================================
 
-const databaseUrl = process.env.DATABASE_URL;
-
-if (!databaseUrl) {
+if (!process.env.DATABASE_URL) {
     console.error("❌ DATABASE_URL is missing.");
-    console.error("❌ Add DATABASE_URL to Render Environment Variables.");
+    process.exit(1);
 }
 
 const pool = new Pool({
-    connectionString: databaseUrl,
+    connectionString: process.env.DATABASE_URL,
 
     ssl: {
         rejectUnauthorized: false
@@ -27,24 +25,7 @@ const pool = new Pool({
     connectionTimeoutMillis: 10000
 });
 
-// ========================================
-// DATABASE STATE
-// ========================================
-
 let databaseReady = false;
-
-// ========================================
-// DATABASE ERROR HANDLER
-// ========================================
-
-pool.on("error", error => {
-
-    console.error(
-        "❌ PostgreSQL pool error:",
-        error.message
-    );
-
-});
 
 // ========================================
 // INITIALIZE DATABASE
@@ -52,25 +33,11 @@ pool.on("error", error => {
 
 async function initDatabase() {
 
-    if (!databaseUrl) {
-
-        throw new Error(
-            "DATABASE_URL environment variable is missing."
-        );
-    }
-
-    console.log(
-        "🔄 Connecting to PostgreSQL..."
-    );
-
-    const client =
-        await pool.connect();
+    const client = await pool.connect();
 
     try {
 
-        console.log(
-            "🔄 Creating/checking PostgreSQL tables..."
-        );
+        console.log("🔄 Creating/checking PostgreSQL tables...");
 
         // ====================================
         // BLOCKED WORDS
@@ -100,32 +67,59 @@ async function initDatabase() {
             );
         `);
 
+        // ====================================
+        // UNAUTHORIZED USERS
+        // ====================================
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS unauthorized_users (
+                guild_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+
+                PRIMARY KEY (guild_id, user_id)
+            );
+        `);
+
+        // ====================================
+        // AUTHORIZED ROLES
+        // ====================================
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS authorized_roles (
+                guild_id TEXT NOT NULL,
+                role_id TEXT NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+
+                PRIMARY KEY (guild_id, role_id)
+            );
+        `);
+
+        // ====================================
+        // UNAUTHORIZED ROLES
+        // ====================================
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS unauthorized_roles (
+                guild_id TEXT NOT NULL,
+                role_id TEXT NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+
+                PRIMARY KEY (guild_id, role_id)
+            );
+        `);
+
         databaseReady = true;
 
-        console.log(
-            "✅ PostgreSQL tables are ready."
-        );
-
-        console.log(
-            "✅ Blocked words database ready."
-        );
-
-        console.log(
-            "✅ Authorized users database ready."
-        );
-
-        return true;
+        console.log("✅ PostgreSQL tables are ready.");
 
     } catch (error) {
 
         databaseReady = false;
 
         console.error(
-            "❌ PostgreSQL initialization failed:"
-        );
-
-        console.error(
-            error.message
+            "❌ Failed to initialize PostgreSQL:",
+            error
         );
 
         throw error;
@@ -143,16 +137,12 @@ async function initDatabase() {
 async function testDatabase() {
 
     if (!databaseReady) {
-
-        throw new Error(
-            "Database is not ready."
-        );
+        throw new Error("Database is not ready.");
     }
 
-    const result =
-        await pool.query(
-            "SELECT NOW() AS time"
-        );
+    const result = await pool.query(
+        "SELECT NOW() AS time"
+    );
 
     console.log(
         `✅ PostgreSQL connection test successful: ${result.rows[0].time}`
@@ -166,7 +156,6 @@ async function testDatabase() {
 // ========================================
 
 function isDatabaseReady() {
-
     return databaseReady;
 }
 
@@ -174,188 +163,123 @@ function isDatabaseReady() {
 // BLOCKED WORDS
 // ========================================
 
-// ========================================
-// ADD BLOCKED WORD
-// ========================================
-
-async function addBlockedWord(
-    guildId,
-    word
-) {
+async function addBlockedWord(guildId, word) {
 
     if (!databaseReady) {
-
-        throw new Error(
-            "Database is not ready."
-        );
+        throw new Error("Database is not ready.");
     }
 
     if (!guildId || !word) {
         return false;
     }
 
-    const cleanWord =
-        String(word)
-            .trim()
-            .toLowerCase();
+    const cleanWord = word.trim().toLowerCase();
 
     if (!cleanWord) {
         return false;
     }
 
-    const result =
-        await pool.query(
-            `
-            INSERT INTO blocked_words
-                (guild_id, word)
+    const result = await pool.query(
+        `
+        INSERT INTO blocked_words
+            (guild_id, word)
 
-            VALUES
-                ($1, $2)
+        VALUES
+            ($1, $2)
 
-            ON CONFLICT
-                (guild_id, word)
+        ON CONFLICT
+            (guild_id, word)
 
-            DO NOTHING
+        DO NOTHING
 
-            RETURNING word;
-            `,
-            [
-                guildId,
-                cleanWord
-            ]
-        );
+        RETURNING word;
+        `,
+        [guildId, cleanWord]
+    );
 
     return result.rowCount > 0;
 }
 
-// ========================================
-// REMOVE BLOCKED WORD
-// ========================================
-
-async function removeBlockedWord(
-    guildId,
-    word
-) {
+async function removeBlockedWord(guildId, word) {
 
     if (!databaseReady) {
-
-        throw new Error(
-            "Database is not ready."
-        );
+        throw new Error("Database is not ready.");
     }
 
     if (!guildId || !word) {
         return false;
     }
 
-    const cleanWord =
-        String(word)
-            .trim()
-            .toLowerCase();
+    const cleanWord = word.trim().toLowerCase();
 
-    const result =
-        await pool.query(
-            `
-            DELETE FROM blocked_words
+    const result = await pool.query(
+        `
+        DELETE FROM blocked_words
 
-            WHERE guild_id = $1
-            AND word = $2
+        WHERE guild_id = $1
+        AND word = $2
 
-            RETURNING word;
-            `,
-            [
-                guildId,
-                cleanWord
-            ]
-        );
+        RETURNING word;
+        `,
+        [guildId, cleanWord]
+    );
 
     return result.rowCount > 0;
 }
 
-// ========================================
-// GET BLOCKED WORDS
-// ========================================
-
-async function getBlockedWords(
-    guildId
-) {
+async function getBlockedWords(guildId) {
 
     if (!databaseReady) {
-
-        throw new Error(
-            "Database is not ready."
-        );
+        throw new Error("Database is not ready.");
     }
 
     if (!guildId) {
         return [];
     }
 
-    const result =
-        await pool.query(
-            `
-            SELECT word
+    const result = await pool.query(
+        `
+        SELECT word
 
-            FROM blocked_words
+        FROM blocked_words
 
-            WHERE guild_id = $1
+        WHERE guild_id = $1
 
-            ORDER BY word ASC;
-            `,
-            [
-                guildId
-            ]
-        );
-
-    return result.rows.map(
-        row => row.word
+        ORDER BY word ASC;
+        `,
+        [guildId]
     );
+
+    return result.rows.map(row => row.word);
 }
 
-// ========================================
-// FIND BLOCKED WORD
-// ========================================
-
-async function findBlockedWord(
-    guildId,
-    message
-) {
+async function findBlockedWord(guildId, message) {
 
     if (!databaseReady) {
-
-        throw new Error(
-            "Database is not ready."
-        );
+        throw new Error("Database is not ready.");
     }
 
     if (!guildId || !message) {
         return null;
     }
 
-    const words =
-        await getBlockedWords(
-            guildId
-        );
+    const words = await getBlockedWords(guildId);
 
-    const content =
-        String(message).toLowerCase();
+    const content = String(message).toLowerCase();
 
     for (const word of words) {
 
-        const escapedWord =
-            word.replace(
-                /[.*+?^${}()|[\]\\]/g,
-                "\\$&"
-            );
+        const escapedWord = word.replace(
+            /[.*+?^${}()|[\]\\]/g,
+            "\\$&"
+        );
 
-        const regex =
-            new RegExp(
-                `\\b${escapedWord}\\b`,
-                "i"
-            );
+        const regex = new RegExp(
+            `\\b${escapedWord}\\b`,
+            "i"
+        );
 
         if (regex.test(content)) {
-
             return word;
         }
     }
@@ -367,166 +291,340 @@ async function findBlockedWord(
 // AUTHORIZED USERS
 // ========================================
 
-// ========================================
-// AUTHORIZE USER
-// ========================================
-
-async function authorizeUser(
-    guildId,
-    userId
-) {
+async function authorizeUser(guildId, userId) {
 
     if (!databaseReady) {
-
-        throw new Error(
-            "Database is not ready."
-        );
+        throw new Error("Database is not ready.");
     }
 
-    if (!guildId || !userId) {
-        return false;
-    }
+    const result = await pool.query(
+        `
+        INSERT INTO authorized_users
+            (guild_id, user_id)
 
-    const result =
-        await pool.query(
-            `
-            INSERT INTO authorized_users
-                (guild_id, user_id)
+        VALUES
+            ($1, $2)
 
-            VALUES
-                ($1, $2)
+        ON CONFLICT
+            (guild_id, user_id)
 
-            ON CONFLICT
-                (guild_id, user_id)
+        DO NOTHING
 
-            DO NOTHING
-
-            RETURNING user_id;
-            `,
-            [
-                guildId,
-                userId
-            ]
-        );
-
-    return result.rowCount > 0;
-}
-
-// ========================================
-// UNAUTHORIZE USER
-// ========================================
-
-async function unauthorizeUser(
-    guildId,
-    userId
-) {
-
-    if (!databaseReady) {
-
-        throw new Error(
-            "Database is not ready."
-        );
-    }
-
-    if (!guildId || !userId) {
-        return false;
-    }
-
-    const result =
-        await pool.query(
-            `
-            DELETE FROM authorized_users
-
-            WHERE guild_id = $1
-            AND user_id = $2
-
-            RETURNING user_id;
-            `,
-            [
-                guildId,
-                userId
-            ]
-        );
-
-    return result.rowCount > 0;
-}
-
-// ========================================
-// CHECK AUTHORIZATION
-// ========================================
-
-async function isAuthorizedUser(
-    guildId,
-    userId
-) {
-
-    if (!databaseReady) {
-        return false;
-    }
-
-    if (!guildId || !userId) {
-        return false;
-    }
-
-    const result =
-        await pool.query(
-            `
-            SELECT user_id
-
-            FROM authorized_users
-
-            WHERE guild_id = $1
-            AND user_id = $2
-
-            LIMIT 1;
-            `,
-            [
-                guildId,
-                userId
-            ]
-        );
-
-    return result.rowCount > 0;
-}
-
-// ========================================
-// GET AUTHORIZED USERS
-// ========================================
-
-async function getAuthorizedUsers(
-    guildId
-) {
-
-    if (!databaseReady) {
-
-        throw new Error(
-            "Database is not ready."
-        );
-    }
-
-    if (!guildId) {
-        return [];
-    }
-
-    const result =
-        await pool.query(
-            `
-            SELECT user_id
-
-            FROM authorized_users
-
-            WHERE guild_id = $1
-
-            ORDER BY created_at ASC;
-            `,
-            [
-                guildId
-            ]
-        );
-
-    return result.rows.map(
-        row => row.user_id
+        RETURNING user_id;
+        `,
+        [guildId, userId]
     );
+
+    // Remove them from unauthorized list.
+    await pool.query(
+        `
+        DELETE FROM unauthorized_users
+
+        WHERE guild_id = $1
+        AND user_id = $2;
+        `,
+        [guildId, userId]
+    );
+
+    return result.rowCount > 0;
+}
+
+async function unauthorizeUser(guildId, userId) {
+
+    if (!databaseReady) {
+        throw new Error("Database is not ready.");
+    }
+
+    const result = await pool.query(
+        `
+        INSERT INTO unauthorized_users
+            (guild_id, user_id)
+
+        VALUES
+            ($1, $2)
+
+        ON CONFLICT
+            (guild_id, user_id)
+
+        DO NOTHING
+
+        RETURNING user_id;
+        `,
+        [guildId, userId]
+    );
+
+    // Remove from authorized list.
+    await pool.query(
+        `
+        DELETE FROM authorized_users
+
+        WHERE guild_id = $1
+        AND user_id = $2;
+        `,
+        [guildId, userId]
+    );
+
+    return result.rowCount > 0;
+}
+
+async function isAuthorizedUser(guildId, userId) {
+
+    if (!databaseReady) {
+        return false;
+    }
+
+    const result = await pool.query(
+        `
+        SELECT user_id
+
+        FROM authorized_users
+
+        WHERE guild_id = $1
+        AND user_id = $2
+
+        LIMIT 1;
+        `,
+        [guildId, userId]
+    );
+
+    return result.rowCount > 0;
+}
+
+async function isUnauthorizedUser(guildId, userId) {
+
+    if (!databaseReady) {
+        return false;
+    }
+
+    const result = await pool.query(
+        `
+        SELECT user_id
+
+        FROM unauthorized_users
+
+        WHERE guild_id = $1
+        AND user_id = $2
+
+        LIMIT 1;
+        `,
+        [guildId, userId]
+    );
+
+    return result.rowCount > 0;
+}
+
+async function getAuthorizedUsers(guildId) {
+
+    if (!databaseReady) {
+        throw new Error("Database is not ready.");
+    }
+
+    const result = await pool.query(
+        `
+        SELECT user_id
+
+        FROM authorized_users
+
+        WHERE guild_id = $1
+
+        ORDER BY created_at ASC;
+        `,
+        [guildId]
+    );
+
+    return result.rows.map(row => row.user_id);
+}
+
+async function getUnauthorizedUsers(guildId) {
+
+    if (!databaseReady) {
+        throw new Error("Database is not ready.");
+    }
+
+    const result = await pool.query(
+        `
+        SELECT user_id
+
+        FROM unauthorized_users
+
+        WHERE guild_id = $1
+
+        ORDER BY created_at ASC;
+        `,
+        [guildId]
+    );
+
+    return result.rows.map(row => row.user_id);
+}
+
+// ========================================
+// AUTHORIZED ROLES
+// ========================================
+
+async function authorizeRole(guildId, roleId) {
+
+    if (!databaseReady) {
+        throw new Error("Database is not ready.");
+    }
+
+    const result = await pool.query(
+        `
+        INSERT INTO authorized_roles
+            (guild_id, role_id)
+
+        VALUES
+            ($1, $2)
+
+        ON CONFLICT
+            (guild_id, role_id)
+
+        DO NOTHING
+
+        RETURNING role_id;
+        `,
+        [guildId, roleId]
+    );
+
+    // Remove from unauthorized roles.
+    await pool.query(
+        `
+        DELETE FROM unauthorized_roles
+
+        WHERE guild_id = $1
+        AND role_id = $2;
+        `,
+        [guildId, roleId]
+    );
+
+    return result.rowCount > 0;
+}
+
+async function unauthorizeRole(guildId, roleId) {
+
+    if (!databaseReady) {
+        throw new Error("Database is not ready.");
+    }
+
+    const result = await pool.query(
+        `
+        INSERT INTO unauthorized_roles
+            (guild_id, role_id)
+
+        VALUES
+            ($1, $2)
+
+        ON CONFLICT
+            (guild_id, role_id)
+
+        DO NOTHING
+
+        RETURNING role_id;
+        `,
+        [guildId, roleId]
+    );
+
+    // Remove from authorized roles.
+    await pool.query(
+        `
+        DELETE FROM authorized_roles
+
+        WHERE guild_id = $1
+        AND role_id = $2;
+        `,
+        [guildId, roleId]
+    );
+
+    return result.rowCount > 0;
+}
+
+async function isAuthorizedRole(guildId, roleId) {
+
+    if (!databaseReady) {
+        return false;
+    }
+
+    const result = await pool.query(
+        `
+        SELECT role_id
+
+        FROM authorized_roles
+
+        WHERE guild_id = $1
+        AND role_id = $2
+
+        LIMIT 1;
+        `,
+        [guildId, roleId]
+    );
+
+    return result.rowCount > 0;
+}
+
+async function isUnauthorizedRole(guildId, roleId) {
+
+    if (!databaseReady) {
+        return false;
+    }
+
+    const result = await pool.query(
+        `
+        SELECT role_id
+
+        FROM unauthorized_roles
+
+        WHERE guild_id = $1
+        AND role_id = $2
+
+        LIMIT 1;
+        `,
+        [guildId, roleId]
+    );
+
+    return result.rowCount > 0;
+}
+
+async function getAuthorizedRoles(guildId) {
+
+    if (!databaseReady) {
+        throw new Error("Database is not ready.");
+    }
+
+    const result = await pool.query(
+        `
+        SELECT role_id
+
+        FROM authorized_roles
+
+        WHERE guild_id = $1
+
+        ORDER BY created_at ASC;
+        `,
+        [guildId]
+    );
+
+    return result.rows.map(row => row.role_id);
+}
+
+async function getUnauthorizedRoles(guildId) {
+
+    if (!databaseReady) {
+        throw new Error("Database is not ready.");
+    }
+
+    const result = await pool.query(
+        `
+        SELECT role_id
+
+        FROM unauthorized_roles
+
+        WHERE guild_id = $1
+
+        ORDER BY created_at ASC;
+        `,
+        [guildId]
+    );
+
+    return result.rows.map(row => row.role_id);
 }
 
 // ========================================
@@ -547,9 +645,19 @@ module.exports = {
     getBlockedWords,
     findBlockedWord,
 
-    // Authorized users
+    // Users
     authorizeUser,
     unauthorizeUser,
     isAuthorizedUser,
-    getAuthorizedUsers
+    isUnauthorizedUser,
+    getAuthorizedUsers,
+    getUnauthorizedUsers,
+
+    // Roles
+    authorizeRole,
+    unauthorizeRole,
+    isAuthorizedRole,
+    isUnauthorizedRole,
+    getAuthorizedRoles,
+    getUnauthorizedRoles
 };
