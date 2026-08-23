@@ -1,25 +1,28 @@
 module.exports = {
-    // How many members need to join...
+
+    // Number of joins required to trigger a raid
     raidJoinThreshold: 8,
 
-    // ...within this many seconds
+    // Time window for detecting a raid
+    // 10 seconds
     raidTimeWindow: 10,
 
-    // Accounts younger than this are considered suspicious.
-    // 86400000 = 24 hours
+    // Accounts younger than this are suspicious
+    // 24 hours
     suspiciousAccountAge: 86400000,
 
-    // How long lockdown lasts automatically.
-    // 300000 = 5 minutes
+    // How long the server stays in lockdown
+    // 5 minutes
     lockdownDuration: 300000,
 
-    // During a raid, quarantine suspicious accounts.
+    // Quarantine suspicious accounts during lockdown
     quarantineSuspiciousAccounts: true,
 
-    // Automatically kick extremely suspicious accounts.
+    // Kick extremely suspicious accounts
     kickSuspiciousAccounts: false,
 
-    // Account age at which an account becomes extremely suspicious.
+    // Accounts younger than this are extremely suspicious
     // 1 hour
     extremeAccountAge: 3600000
+
 };
