@@ -24,24 +24,56 @@ async function initDatabase() {
 
         await pool.query(`
             CREATE TABLE IF NOT EXISTS blocked_words (
-                id SERIAL PRIMARY KEY,
                 guild_id TEXT NOT NULL,
                 word TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(guild_id, word)
+
+                PRIMARY KEY (guild_id, word)
             );
         `);
 
-        console.log("✅ Database initialized.");
+        console.log(
+            "✅ blocked_words table is ready."
+        );
 
     } catch (error) {
 
         console.error(
-            "❌ Database initialization failed:",
+            "❌ Failed to initialize database:",
             error
         );
 
         throw error;
+    }
+}
+
+// ========================================
+// TEST DATABASE
+// ========================================
+
+async function testDatabase() {
+
+    try {
+
+        const result =
+            await pool.query(
+                "SELECT NOW() AS time"
+            );
+
+        console.log(
+            `✅ Database test successful: ${result.rows[0].time}`
+        );
+
+        return true;
+
+    } catch (error) {
+
+        console.error(
+            "❌ Database test failed:",
+            error
+        );
+
+        return false;
     }
 }
 
@@ -54,12 +86,14 @@ async function addBlockedWord(
     word
 ) {
 
-    const cleanWord =
-        word
-            .trim()
-            .toLowerCase();
+    if (!guildId || !word) {
+        return false;
+    }
 
-    if (!guildId || !cleanWord) {
+    const cleanWord =
+        word.trim().toLowerCase();
+
+    if (!cleanWord) {
         return false;
     }
 
@@ -71,13 +105,18 @@ async function addBlockedWord(
                 (guild_id, word)
             VALUES
                 ($1, $2)
-            ON CONFLICT (guild_id, word)
+            ON CONFLICT
+                (guild_id, word)
             DO NOTHING
             `,
             [
                 guildId,
                 cleanWord
             ]
+        );
+
+        console.log(
+            `[DATABASE] Added blocked word "${cleanWord}" to ${guildId}`
         );
 
         return true;
@@ -102,14 +141,12 @@ async function removeBlockedWord(
     word
 ) {
 
-    const cleanWord =
-        word
-            .trim()
-            .toLowerCase();
-
-    if (!guildId || !cleanWord) {
+    if (!guildId || !word) {
         return false;
     }
+
+    const cleanWord =
+        word.trim().toLowerCase();
 
     try {
 
@@ -161,9 +198,7 @@ async function getBlockedWords(
                 WHERE guild_id = $1
                 ORDER BY word ASC
                 `,
-                [
-                    guildId
-                ]
+                [guildId]
             );
 
         return result.rows.map(
@@ -190,68 +225,63 @@ async function findBlockedWord(
     message
 ) {
 
-    if (
-        !guildId ||
-        !message
-    ) {
+    if (!guildId || !message) {
         return null;
     }
 
-    const words =
-        await getBlockedWords(guildId);
-
-    const content =
-        message.toLowerCase();
-
-    for (const word of words) {
-
-        const escapedWord =
-            word.replace(
-                /[.*+?^${}()|[\]\\]/g,
-                "\\$&"
-            );
-
-        const regex =
-            new RegExp(
-                `\\b${escapedWord}\\b`,
-                "i"
-            );
-
-        if (regex.test(content)) {
-            return word;
-        }
-    }
-
-    return null;
-}
-
-// ========================================
-// DATABASE TEST
-// ========================================
-
-async function testDatabase() {
-
     try {
 
-        await pool.query(
-            "SELECT NOW()"
-        );
+        const words =
+            await getBlockedWords(
+                guildId
+            );
 
-        console.log(
-            "✅ PostgreSQL connection successful."
-        );
+        const content =
+            message.toLowerCase();
 
-        return true;
+        for (const word of words) {
+
+            const escapedWord =
+                word.replace(
+                    /[.*+?^${}()|[\]\\]/g,
+                    "\\$&"
+                );
+
+            const regex =
+                new RegExp(
+                    `\\b${escapedWord}\\b`,
+                    "i"
+                );
+
+            if (regex.test(content)) {
+                return word;
+            }
+        }
+
+        return null;
 
     } catch (error) {
 
         console.error(
-            "❌ PostgreSQL connection failed:",
+            "❌ Failed to find blocked word:",
             error
         );
 
-        return false;
+        return null;
     }
+}
+
+// ========================================
+// CLOSE DATABASE
+// ========================================
+
+async function closeDatabase() {
+
+    await pool.end();
+
+    console.log(
+        "🛑 Database connection closed."
+    );
 }
 
 // ========================================
@@ -263,14 +293,12 @@ module.exports = {
     pool,
 
     initDatabase,
-
     testDatabase,
 
     addBlockedWord,
-
     removeBlockedWord,
-
     getBlockedWords,
+    findBlockedWord,
 
-    findBlockedWord
+    closeDatabase
 };
