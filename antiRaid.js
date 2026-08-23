@@ -425,3 +425,33 @@ module.exports = {
     getBlockedWords,
     findBlockedWord
 };
+
+// ========================================
+// AUTHORIZED USERS
+// ========================================
+
+function authorizeUser(guildId, userId) {
+    const state = getGuildState(guildId);
+
+    state.authorizedUsers.add(userId);
+
+    return true;
+}
+
+function unauthorizeUser(guildId, userId) {
+    const state = getGuildState(guildId);
+
+    return state.authorizedUsers.delete(userId);
+}
+
+function isAuthorizedUser(guildId, userId) {
+    const state = getGuildState(guildId);
+
+    return state.authorizedUsers.has(userId);
+}
+
+function getAuthorizedUsers(guildId) {
+    const state = getGuildState(guildId);
+
+    return [...state.authorizedUsers];
+}
