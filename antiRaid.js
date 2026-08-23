@@ -21,7 +21,6 @@ function getGuildState(guildId) {
             lockdownTimer: null,
             whitelistedUsers: new Set()
         });
-
     }
 
     return guildStates.get(guildId);
@@ -41,11 +40,12 @@ function recordJoin(guildId, userId) {
         timestamp: now
     });
 
-    state.joins = state.joins.filter(
-        join =>
-            now - join.timestamp <=
-            config.raidTimeWindow * 1000
-    );
+    state.joins =
+        state.joins.filter(
+            join =>
+                now - join.timestamp <=
+                config.raidTimeWindow * 1000
+        );
 
     return state.joins.length;
 }
@@ -81,7 +81,9 @@ function isWhitelisted(member) {
     }
 
     const state =
-        getGuildState(member.guild.id);
+        getGuildState(
+            member.guild.id
+        );
 
     return state.whitelistedUsers.has(
         member.id
@@ -103,7 +105,9 @@ function removeWhitelist(guildId, userId) {
     const state =
         getGuildState(guildId);
 
-    return state.whitelistedUsers.delete(userId);
+    return state.whitelistedUsers.delete(
+        userId
+    );
 }
 
 // ========================================
@@ -192,8 +196,10 @@ async function lockdown(
         try {
 
             if (
-                channel.type === ChannelType.GuildText ||
-                channel.type === ChannelType.GuildAnnouncement
+                channel.type ===
+                    ChannelType.GuildText ||
+                channel.type ===
+                    ChannelType.GuildAnnouncement
             ) {
 
                 await channel.permissionOverwrites.edit(
@@ -283,8 +289,10 @@ async function unlock(guild) {
         try {
 
             if (
-                channel.type === ChannelType.GuildText ||
-                channel.type === ChannelType.GuildAnnouncement
+                channel.type ===
+                    ChannelType.GuildText ||
+                channel.type ===
+                    ChannelType.GuildAnnouncement
             ) {
 
                 await channel.permissionOverwrites.edit(
@@ -317,7 +325,9 @@ async function unlock(guild) {
 
 function isLockedDown(guildId) {
 
-    return getGuildState(guildId).lockdown;
+    return getGuildState(
+        guildId
+    ).lockdown;
 }
 
 // ========================================
@@ -342,14 +352,13 @@ function getRecentJoinCount(guildId) {
 }
 
 // ========================================
-// BLOCKED WORD DATABASE
+// BLOCKED WORDS
 // ========================================
 
 async function addBlockedWord(
     guildId,
     word
 ) {
-
     return database.addBlockedWord(
         guildId,
         word
@@ -360,7 +369,6 @@ async function removeBlockedWord(
     guildId,
     word
 ) {
-
     return database.removeBlockedWord(
         guildId,
         word
@@ -370,7 +378,6 @@ async function removeBlockedWord(
 async function getBlockedWords(
     guildId
 ) {
-
     return database.getBlockedWords(
         guildId
     );
@@ -380,7 +387,6 @@ async function findBlockedWord(
     guildId,
     message
 ) {
-
     return database.findBlockedWord(
         guildId,
         message
@@ -395,7 +401,6 @@ async function authorizeUser(
     guildId,
     userId
 ) {
-
     return database.authorizeUser(
         guildId,
         userId
@@ -406,7 +411,6 @@ async function unauthorizeUser(
     guildId,
     userId
 ) {
-
     return database.unauthorizeUser(
         guildId,
         userId
@@ -417,7 +421,6 @@ async function isAuthorizedUser(
     guildId,
     userId
 ) {
-
     return database.isAuthorizedUser(
         guildId,
         userId
@@ -428,7 +431,6 @@ async function isUnauthorizedUser(
     guildId,
     userId
 ) {
-
     return database.isUnauthorizedUser(
         guildId,
         userId
@@ -438,7 +440,6 @@ async function isUnauthorizedUser(
 async function getAuthorizedUsers(
     guildId
 ) {
-
     return database.getAuthorizedUsers(
         guildId
     );
@@ -447,7 +448,6 @@ async function getAuthorizedUsers(
 async function getUnauthorizedUsers(
     guildId
 ) {
-
     return database.getUnauthorizedUsers(
         guildId
     );
@@ -461,7 +461,6 @@ async function authorizeRole(
     guildId,
     roleId
 ) {
-
     return database.authorizeRole(
         guildId,
         roleId
@@ -472,7 +471,6 @@ async function unauthorizeRole(
     guildId,
     roleId
 ) {
-
     return database.unauthorizeRole(
         guildId,
         roleId
@@ -483,7 +481,6 @@ async function isAuthorizedRole(
     guildId,
     roleId
 ) {
-
     return database.isAuthorizedRole(
         guildId,
         roleId
@@ -494,7 +491,6 @@ async function isUnauthorizedRole(
     guildId,
     roleId
 ) {
-
     return database.isUnauthorizedRole(
         guildId,
         roleId
@@ -504,7 +500,6 @@ async function isUnauthorizedRole(
 async function getAuthorizedRoles(
     guildId
 ) {
-
     return database.getAuthorizedRoles(
         guildId
     );
@@ -513,7 +508,6 @@ async function getAuthorizedRoles(
 async function getUnauthorizedRoles(
     guildId
 ) {
-
     return database.getUnauthorizedRoles(
         guildId
     );
@@ -521,20 +515,27 @@ async function getUnauthorizedRoles(
 
 // ========================================
 // GUARDIAN ACCESS CONTROL
+// ========================================
 //
-// DEFAULT = DENY
+// RULES:
 //
-// Administrator = ALLOW
-// Authorized user = ALLOW
-// Authorized role = ALLOW
-// Unauthorized user = DENY
-// Unauthorized role = DENY
-// Everyone else = DENY
+// 1. Administrator = ALLOWED
+// 2. Explicit unauthorized user = DENIED
+// 3. Explicit unauthorized role = DENIED
+// 4. Explicit authorized user = ALLOWED
+// 5. Authorized role = ALLOWED
+// 6. Everyone else = DENIED
+//
+// Unauthorized always overrides authorization.
+//
 // ========================================
 
 async function canUseGuardian(member) {
 
-    if (!member || !member.guild) {
+    if (
+        !member ||
+        !member.guild
+    ) {
         return false;
     }
 
@@ -545,15 +546,15 @@ async function canUseGuardian(member) {
         member.id;
 
     // ====================================
-    // ADMINISTRATORS
+    // ADMINISTRATOR
     // ====================================
 
     if (
-        member.permissions?.has(
+        member.permissions &&
+        member.permissions.has(
             "Administrator"
         )
     ) {
-
         return true;
     }
 
@@ -562,12 +563,11 @@ async function canUseGuardian(member) {
     // ====================================
 
     if (
-        await isUnauthorizedUser(
+        await database.isUnauthorizedUser(
             guildId,
             userId
         )
     ) {
-
         return false;
     }
 
@@ -575,15 +575,11 @@ async function canUseGuardian(member) {
     // EXPLICIT ROLE DENY
     // ====================================
 
-    const memberRoles =
-        member.roles?.cache || new Map();
-
     for (
         const role of
-        memberRoles.values()
+        member.roles.cache.values()
     ) {
 
-        // Skip @everyone
         if (
             role.id === guildId
         ) {
@@ -591,12 +587,11 @@ async function canUseGuardian(member) {
         }
 
         if (
-            await isUnauthorizedRole(
+            await database.isUnauthorizedRole(
                 guildId,
                 role.id
             )
         ) {
-
             return false;
         }
     }
@@ -606,25 +601,23 @@ async function canUseGuardian(member) {
     // ====================================
 
     if (
-        await isAuthorizedUser(
+        await database.isAuthorizedUser(
             guildId,
             userId
         )
     ) {
-
         return true;
     }
 
     // ====================================
-    // AUTHORIZED ROLE ALLOW
+    // AUTHORIZED ROLE
     // ====================================
 
     for (
         const role of
-        memberRoles.values()
+        member.roles.cache.values()
     ) {
 
-        // Skip @everyone
         if (
             role.id === guildId
         ) {
@@ -632,12 +625,11 @@ async function canUseGuardian(member) {
         }
 
         if (
-            await isAuthorizedRole(
+            await database.isAuthorizedRole(
                 guildId,
                 role.id
             )
         ) {
-
             return true;
         }
     }
@@ -655,31 +647,25 @@ async function canUseGuardian(member) {
 
 module.exports = {
 
-    // Join protection
     recordJoin,
     isSuspiciousAccount,
 
-    // Whitelist
     isWhitelisted,
     whitelistUser,
     removeWhitelist,
 
-    // Moderation
     kickMember,
 
-    // Lockdown
     lockdown,
     unlock,
     isLockedDown,
     getRecentJoinCount,
 
-    // Blocked words
     addBlockedWord,
     removeBlockedWord,
     getBlockedWords,
     findBlockedWord,
 
-    // Authorized users
     authorizeUser,
     unauthorizeUser,
     isAuthorizedUser,
@@ -687,7 +673,6 @@ module.exports = {
     getAuthorizedUsers,
     getUnauthorizedUsers,
 
-    // Authorized roles
     authorizeRole,
     unauthorizeRole,
     isAuthorizedRole,
@@ -695,7 +680,5 @@ module.exports = {
     getAuthorizedRoles,
     getUnauthorizedRoles,
 
-    // Access control
     canUseGuardian
-
 };
