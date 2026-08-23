@@ -1,3 +1,23 @@
+const {
+    recordJoin,
+    isSuspiciousAccount,
+    isWhitelisted,
+    kickMember,
+    lockdown,
+    unlock,
+    isLockedDown,
+    addBlockedWord,
+    removeBlockedWord,
+    getBlockedWords,
+    findBlockedWord,
+
+    authorizeUser,
+    unauthorizeUser,
+    isAuthorizedUser,
+    getAuthorizedUsers
+
+} = require("./antiRaid");
+
 require("dotenv").config();
 
 const express = require("express");
@@ -458,3 +478,32 @@ client.on(
 client.login(
     process.env.DISCORD_TOKEN
 );
+
+// ========================================
+// AUTHORIZATION CHECK
+// ========================================
+
+const isAdministrator =
+    interaction.memberPermissions?.has(
+        "Administrator"
+    );
+
+const isAuthorized =
+    isAuthorizedUser(
+        interaction.guild.id,
+        interaction.user.id
+    );
+
+// Server administrators always have access.
+// Otherwise the user must be authorized.
+
+if (!isAdministrator && !isAuthorized) {
+
+    await interaction.reply({
+        content:
+            "❌ You are not authorized to use Guardian Anti-Raid.",
+        ephemeral: true
+    });
+
+    return;
+}
