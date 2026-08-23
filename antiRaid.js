@@ -4,16 +4,16 @@ const {
 
 const config = require("./config");
 
-// Store each server's anti-raid state
 const guildStates = new Map();
 
 // ==============================
-// GET SERVER STATE
+// SERVER STATE
 // ==============================
 
 function getGuildState(guildId) {
 
     if (!guildStates.has(guildId)) {
+
         guildStates.set(guildId, {
             joins: [],
             lockdown: false,
@@ -27,20 +27,20 @@ function getGuildState(guildId) {
 }
 
 // ==============================
-// RECORD MEMBER JOIN
+// RECORD JOIN
 // ==============================
 
 function recordJoin(guildId, userId) {
 
     const state = getGuildState(guildId);
+
     const now = Date.now();
 
     state.joins.push({
-        userId: userId,
+        userId,
         timestamp: now
     });
 
-    // Remove old joins
     state.joins = state.joins.filter(join => {
         return (
             now - join.timestamp <=
@@ -58,21 +58,29 @@ function recordJoin(guildId, userId) {
 function isSuspiciousAccount(member) {
 
     const accountAge =
-        Date.now() - member.user.createdTimestamp;
+        Date.now() -
+        member.user.createdTimestamp;
 
-    return accountAge < config.suspiciousAccountAge;
+    return (
+        accountAge <
+        config.suspiciousAccountAge
+    );
 }
 
 // ==============================
-// EXTREMELY SUSPICIOUS ACCOUNT
+// EXTREMELY SUSPICIOUS
 // ==============================
 
 function isExtremelySuspicious(member) {
 
     const accountAge =
-        Date.now() - member.user.createdTimestamp;
+        Date.now() -
+        member.user.createdTimestamp;
 
-    return accountAge < config.extremeAccountAge;
+    return (
+        accountAge <
+        config.extremeAccountAge
+    );
 }
 
 // ==============================
@@ -84,7 +92,9 @@ function isWhitelisted(member) {
     const state =
         getGuildState(member.guild.id);
 
-    return state.whitelistedUsers.has(member.id);
+    return state.whitelistedUsers.has(
+        member.id
+    );
 }
 
 // ==============================
@@ -96,7 +106,6 @@ async function getQuarantineRole(guild) {
     const state =
         getGuildState(guild.id);
 
-    // Check existing saved role
     if (state.quarantineRoleId) {
 
         const existingRole =
@@ -109,13 +118,12 @@ async function getQuarantineRole(guild) {
         }
     }
 
-    // Look for existing role
     let role =
         guild.roles.cache.find(
-            role => role.name === "Raid Quarantine"
+            role =>
+                role.name === "Raid Quarantine"
         );
 
-    // Create role if necessary
     if (!role) {
 
         role = await guild.roles.create({
@@ -139,10 +147,6 @@ async function quarantineMember(member) {
     try {
 
         if (!member.manageable) {
-            console.log(
-                `Cannot quarantine ${member.user.tag}`
-            );
-
             return false;
         }
 
@@ -173,15 +177,14 @@ async function quarantineMember(member) {
 // KICK MEMBER
 // ==============================
 
-async function kickMember(member, reason) {
+async function kickMember(
+    member,
+    reason
+) {
 
     try {
 
         if (!member.kickable) {
-            console.log(
-                `Cannot kick ${member.user.tag}`
-            );
-
             return false;
         }
 
@@ -212,7 +215,6 @@ async function lockdown(
     const state =
         getGuildState(guild.id);
 
-    // Already locked
     if (state.lockdown) {
         return false;
     }
@@ -223,14 +225,9 @@ async function lockdown(
         `[RAID] Lockdown started in ${guild.name}`
     );
 
-    console.log(
-        `[RAID] Reason: ${reason}`
-    );
-
     const everyoneRole =
         guild.roles.everyone;
 
-    // Lock text channels
     for (
         const channel of guild.channels.cache.values()
     ) {
@@ -265,13 +262,11 @@ async function lockdown(
         }
     }
 
-    // Automatically unlock
     state.lockdownTimer =
-        setTimeout(() => {
-
-            unlock(guild);
-
-        }, config.lockdownDuration);
+        setTimeout(
+            () => unlock(guild),
+            config.lockdownDuration
+        );
 
     return true;
 }
@@ -285,14 +280,12 @@ async function unlock(guild) {
     const state =
         getGuildState(guild.id);
 
-    // Not locked
     if (!state.lockdown) {
         return false;
     }
 
     state.lockdown = false;
 
-    // Stop timer
     if (state.lockdownTimer) {
 
         clearTimeout(
@@ -305,7 +298,6 @@ async function unlock(guild) {
     const everyoneRole =
         guild.roles.everyone;
 
-    // Unlock text channels
     for (
         const channel of guild.channels.cache.values()
     ) {
@@ -348,7 +340,7 @@ async function unlock(guild) {
 }
 
 // ==============================
-// CHECK LOCKDOWN
+// LOCKDOWN STATUS
 // ==============================
 
 function isLockedDown(guildId) {
@@ -359,7 +351,7 @@ function isLockedDown(guildId) {
 }
 
 // ==============================
-// WHITELIST USER
+// WHITELIST
 // ==============================
 
 function whitelistUser(
@@ -367,53 +359,41 @@ function whitelistUser(
     userId
 ) {
 
-    const state =
-        getGuildState(guildId);
-
-    state.whitelistedUsers.add(
+    getGuildState(
+        guildId
+    ).whitelistedUsers.add(
         userId
     );
 }
-
-// ==============================
-// REMOVE WHITELIST
-// ==============================
 
 function removeWhitelist(
     guildId,
     userId
 ) {
 
-    const state =
-        getGuildState(guildId);
-
-    state.whitelistedUsers.delete(
+    getGuildState(
+        guildId
+    ).whitelistedUsers.delete(
         userId
     );
 }
 
 // ==============================
-// RECENT JOIN COUNT
+// RECENT JOINS
 // ==============================
 
-function getRecentJoinCount(
-    guildId
-) {
+function getRecentJoinCount(guildId) {
 
     const state =
         getGuildState(guildId);
 
     const now = Date.now();
 
-    state.joins =
-        state.joins.filter(join => {
-
-            return (
-                now - join.timestamp <=
-                config.raidTimeWindow * 1000
-            );
-
-        });
+    state.joins = state.joins.filter(
+        join =>
+            now - join.timestamp <=
+            config.raidTimeWindow * 1000
+    );
 
     return state.joins.length;
 }
@@ -423,29 +403,16 @@ function getRecentJoinCount(
 // ==============================
 
 module.exports = {
-
     recordJoin,
-
     isSuspiciousAccount,
-
     isExtremelySuspicious,
-
     isWhitelisted,
-
     quarantineMember,
-
     kickMember,
-
     lockdown,
-
     unlock,
-
     isLockedDown,
-
     whitelistUser,
-
     removeWhitelist,
-
     getRecentJoinCount
-
 };
