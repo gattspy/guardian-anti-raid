@@ -3,6 +3,7 @@ const {
 } = require("discord.js");
 
 const config = require("./config");
+
 const database = require("./database");
 
 // ========================================
@@ -16,13 +17,15 @@ function getGuildState(guildId) {
     if (!guildStates.has(guildId)) {
 
         guildStates.set(guildId, {
+
             joins: [],
+
             lockdown: false,
+
             lockdownTimer: null,
 
-            whitelistedUsers: new Set(),
+            whitelistedUsers: new Set()
 
-            authorizedUsers: new Set()
         });
     }
 
@@ -33,21 +36,28 @@ function getGuildState(guildId) {
 // RECORD MEMBER JOIN
 // ========================================
 
-function recordJoin(guildId, userId) {
+function recordJoin(
+    guildId,
+    userId
+) {
 
-    const state = getGuildState(guildId);
-    const now = Date.now();
+    const state =
+        getGuildState(guildId);
+
+    const now =
+        Date.now();
 
     state.joins.push({
         userId,
         timestamp: now
     });
 
-    state.joins = state.joins.filter(
-        join =>
-            now - join.timestamp <=
-            config.raidTimeWindow * 1000
-    );
+    state.joins =
+        state.joins.filter(
+            join =>
+                now - join.timestamp <=
+                config.raidTimeWindow * 1000
+        );
 
     return state.joins.length;
 }
@@ -56,7 +66,9 @@ function recordJoin(guildId, userId) {
 // CHECK ACCOUNT AGE
 // ========================================
 
-function isSuspiciousAccount(member) {
+function isSuspiciousAccount(
+    member
+) {
 
     if (!member || !member.user) {
         return false;
@@ -76,17 +88,57 @@ function isSuspiciousAccount(member) {
 // WHITELIST
 // ========================================
 
-function isWhitelisted(member) {
+function isWhitelisted(
+    member
+) {
 
     if (!member || !member.guild) {
         return false;
     }
 
     const state =
-        getGuildState(member.guild.id);
+        getGuildState(
+            member.guild.id
+        );
 
     return state.whitelistedUsers.has(
         member.id
+    );
+}
+
+// ========================================
+// WHITELIST USER
+// ========================================
+
+function whitelistUser(
+    guildId,
+    userId
+) {
+
+    const state =
+        getGuildState(guildId);
+
+    state.whitelistedUsers.add(
+        userId
+    );
+
+    return true;
+}
+
+// ========================================
+// REMOVE WHITELIST
+// ========================================
+
+function removeWhitelist(
+    guildId,
+    userId
+) {
+
+    const state =
+        getGuildState(guildId);
+
+    return state.whitelistedUsers.delete(
+        userId
     );
 }
 
@@ -96,12 +148,16 @@ function isWhitelisted(member) {
 
 async function kickMember(
     member,
-    reason = "Guardian Anti-Raid protection"
+    reason =
+        "Guardian Anti-Raid protection"
 ) {
 
     try {
 
-        if (!member || !member.kickable) {
+        if (
+            !member ||
+            !member.kickable
+        ) {
 
             console.log(
                 `[KICK FAILED] Cannot kick ${member?.user?.tag || "Unknown user"}`
@@ -170,8 +226,11 @@ async function lockdown(
         try {
 
             if (
-                channel.type === ChannelType.GuildText ||
-                channel.type === ChannelType.GuildAnnouncement
+                channel.type ===
+                    ChannelType.GuildText ||
+
+                channel.type ===
+                    ChannelType.GuildAnnouncement
             ) {
 
                 await channel.permissionOverwrites.edit(
@@ -194,10 +253,6 @@ async function lockdown(
             );
         }
     }
-
-    // ====================================
-    // AUTOMATIC UNLOCK
-    // ====================================
 
     state.lockdownTimer =
         setTimeout(
@@ -226,7 +281,9 @@ async function lockdown(
 // UNLOCK
 // ========================================
 
-async function unlock(guild) {
+async function unlock(
+    guild
+) {
 
     if (!guild) {
         return false;
@@ -265,8 +322,11 @@ async function unlock(guild) {
         try {
 
             if (
-                channel.type === ChannelType.GuildText ||
-                channel.type === ChannelType.GuildAnnouncement
+                channel.type ===
+                    ChannelType.GuildText ||
+
+                channel.type ===
+                    ChannelType.GuildAnnouncement
             ) {
 
                 await channel.permissionOverwrites.edit(
@@ -294,76 +354,162 @@ async function unlock(guild) {
 }
 
 // ========================================
-// CHECK LOCKDOWN STATUS
+// CHECK LOCKDOWN
 // ========================================
 
-function isLockedDown(guildId) {
+function isLockedDown(
+    guildId
+) {
 
-    return getGuildState(guildId).lockdown;
+    return getGuildState(
+        guildId
+    ).lockdown;
 }
 
 // ========================================
-// AUTHORIZE USER
+// GET RECENT JOINS
 // ========================================
 
-function authorizeUser(
-    guildId,
-    userId
+function getRecentJoinCount(
+    guildId
 ) {
 
     const state =
         getGuildState(guildId);
 
-    state.authorizedUsers.add(userId);
+    const now =
+        Date.now();
 
-    return true;
+    state.joins =
+        state.joins.filter(
+            join =>
+                now - join.timestamp <=
+                config.raidTimeWindow * 1000
+        );
+
+    return state.joins.length;
+}
+
+// ========================================
+// ================================
+// DATABASE AUTHORIZATION
+// ================================
+// ========================================
+
+// ========================================
+// AUTHORIZE USER
+// ========================================
+
+async function authorizeUser(
+    guildId,
+    userId
+) {
+
+    try {
+
+        return await database.authorizeUser(
+            guildId,
+            userId
+        );
+
+    } catch (error) {
+
+        console.error(
+            "[DATABASE] Failed to authorize user:",
+            error
+        );
+
+        return false;
+    }
 }
 
 // ========================================
 // UNAUTHORIZE USER
 // ========================================
 
-function unauthorizeUser(
+async function unauthorizeUser(
     guildId,
     userId
 ) {
 
-    const state =
-        getGuildState(guildId);
+    try {
 
-    return state.authorizedUsers.delete(userId);
+        return await database.unauthorizeUser(
+            guildId,
+            userId
+        );
+
+    } catch (error) {
+
+        console.error(
+            "[DATABASE] Failed to unauthorize user:",
+            error
+        );
+
+        return false;
+    }
 }
 
 // ========================================
 // CHECK AUTHORIZATION
 // ========================================
 
-function isAuthorizedUser(
+async function isAuthorizedUser(
     guildId,
     userId
 ) {
 
-    const state =
-        getGuildState(guildId);
+    try {
 
-    return state.authorizedUsers.has(userId);
+        return await database.isAuthorizedUser(
+            guildId,
+            userId
+        );
+
+    } catch (error) {
+
+        console.error(
+            "[DATABASE] Failed to check authorization:",
+            error
+        );
+
+        return false;
+    }
 }
 
 // ========================================
 // GET AUTHORIZED USERS
 // ========================================
 
-function getAuthorizedUsers(guildId) {
+async function getAuthorizedUsers(
+    guildId
+) {
 
-    const state =
-        getGuildState(guildId);
+    try {
 
-    return [...state.authorizedUsers];
+        return await database.getAuthorizedUsers(
+            guildId
+        );
+
+    } catch (error) {
+
+        console.error(
+            "[DATABASE] Failed to get authorized users:",
+            error
+        );
+
+        return [];
+    }
 }
 
 // ========================================
+// ================================
+// DATABASE BLOCKED WORDS
+// ================================
+// ========================================
+
+// ========================================
 // ADD BLOCKED WORD
-// STORED IN POSTGRES
 // ========================================
 
 async function addBlockedWord(
@@ -371,23 +517,12 @@ async function addBlockedWord(
     word
 ) {
 
-    if (!guildId || !word) {
-        return false;
-    }
-
     try {
 
-        const result =
-            await database.addBlockedWord(
-                guildId,
-                word
-            );
-
-        console.log(
-            `[DATABASE] Added blocked word "${word}" to ${guildId}`
+        return await database.addBlockedWord(
+            guildId,
+            word
         );
-
-        return result;
 
     } catch (error) {
 
@@ -402,7 +537,6 @@ async function addBlockedWord(
 
 // ========================================
 // REMOVE BLOCKED WORD
-// STORED IN POSTGRES
 // ========================================
 
 async function removeBlockedWord(
@@ -410,26 +544,12 @@ async function removeBlockedWord(
     word
 ) {
 
-    if (!guildId || !word) {
-        return false;
-    }
-
     try {
 
-        const result =
-            await database.removeBlockedWord(
-                guildId,
-                word
-            );
-
-        if (result) {
-
-            console.log(
-                `[DATABASE] Removed blocked word "${word}" from ${guildId}`
-            );
-        }
-
-        return result;
+        return await database.removeBlockedWord(
+            guildId,
+            word
+        );
 
     } catch (error) {
 
@@ -444,16 +564,11 @@ async function removeBlockedWord(
 
 // ========================================
 // GET BLOCKED WORDS
-// STORED IN POSTGRES
 // ========================================
 
 async function getBlockedWords(
     guildId
 ) {
-
-    if (!guildId) {
-        return [];
-    }
 
     try {
 
@@ -474,7 +589,6 @@ async function getBlockedWords(
 
 // ========================================
 // FIND BLOCKED WORD
-// STORED IN POSTGRES
 // ========================================
 
 async function findBlockedWord(
@@ -482,104 +596,22 @@ async function findBlockedWord(
     message
 ) {
 
-    if (!guildId || !message) {
-        return null;
-    }
-
     try {
 
-        const words =
-            await database.getBlockedWords(
-                guildId
-            );
-
-        const content =
-            message.toLowerCase();
-
-        for (const word of words) {
-
-            const escapedWord =
-                word.replace(
-                    /[.*+?^${}()|[\]\\]/g,
-                    "\\$&"
-                );
-
-            const regex =
-                new RegExp(
-                    `\\b${escapedWord}\\b`,
-                    "i"
-                );
-
-            if (regex.test(content)) {
-                return word;
-            }
-        }
-
-        return null;
+        return await database.findBlockedWord(
+            guildId,
+            message
+        );
 
     } catch (error) {
 
         console.error(
-            "[DATABASE] Failed to check blocked words:",
+            "[DATABASE] Failed to find blocked word:",
             error
         );
 
         return null;
     }
-}
-
-// ========================================
-// WHITELIST USER
-// ========================================
-
-function whitelistUser(
-    guildId,
-    userId
-) {
-
-    const state =
-        getGuildState(guildId);
-
-    state.whitelistedUsers.add(userId);
-
-    return true;
-}
-
-// ========================================
-// REMOVE FROM WHITELIST
-// ========================================
-
-function removeWhitelist(
-    guildId,
-    userId
-) {
-
-    const state =
-        getGuildState(guildId);
-
-    return state.whitelistedUsers.delete(userId);
-}
-
-// ========================================
-// GET RECENT JOINS
-// ========================================
-
-function getRecentJoinCount(guildId) {
-
-    const state =
-        getGuildState(guildId);
-
-    const now =
-        Date.now();
-
-    state.joins =
-        state.joins.filter(
-            join =>
-                now - join.timestamp <=
-                config.raidTimeWindow * 1000
-        );
-
-    return state.joins.length;
 }
 
 // ========================================
@@ -609,7 +641,7 @@ module.exports = {
     isAuthorizedUser,
     getAuthorizedUsers,
 
-    // PostgreSQL blocked words
+    // Blocked words
     addBlockedWord,
     removeBlockedWord,
     getBlockedWords,
