@@ -229,3 +229,63 @@ client.on("error", error => {
     Login.
 */
 client.login(process.env.DISCORD_TOKEN);
+/*
+    Slash commands.
+*/
+client.on("interactionCreate", async interaction => {
+
+    if (!interaction.isChatInputCommand()) {
+        return;
+    }
+
+    /*
+        Only administrators can use these commands.
+    */
+    if (
+        !interaction.memberPermissions.has(
+            "Administrator"
+        )
+    ) {
+        await interaction.reply({
+            content:
+                "❌ You need Administrator permission to use this command.",
+            ephemeral: true
+        });
+
+        return;
+    }
+
+    if (interaction.commandName === "lockdown") {
+
+        await lockdown(
+            interaction.guild,
+            `Manual lockdown by ${interaction.user.tag}`
+        );
+
+        await interaction.reply(
+            "🔒 **SERVER LOCKDOWN ACTIVATED**"
+        );
+    }
+
+    if (interaction.commandName === "unlock") {
+
+        await unlock(interaction.guild);
+
+        await interaction.reply(
+            "🔓 **SERVER LOCKDOWN REMOVED**"
+        );
+    }
+
+    if (interaction.commandName === "raidstatus") {
+
+        const status = isLockedDown(
+            interaction.guild.id
+        );
+
+        await interaction.reply(
+            status
+                ? "🚨 **RAID LOCKDOWN ACTIVE**"
+                : "🟢 **No lockdown is currently active.**"
+        );
+    }
+});
