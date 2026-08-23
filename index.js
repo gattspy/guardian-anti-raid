@@ -97,7 +97,7 @@ const client = new Client({
 
 client.once(
     "ready",
-    () => {
+    async () => {
 
         console.log(
             "================================"
@@ -123,9 +123,24 @@ client.once(
             "New-account protection: 24 hours"
         );
 
-        console.log(
-            "Banned-word timeout: 24 hours"
-        );
+        // ====================================
+        // DATABASE
+        // ====================================
+
+        try {
+
+            await database.initDatabase();
+
+            await database.testDatabase();
+
+        } catch (error) {
+
+            console.error(
+                "❌ Database startup failed:",
+                error
+            );
+
+        }
     }
 );
 
