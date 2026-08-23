@@ -8,6 +8,8 @@ const {
     EmbedBuilder
 } = require("discord.js");
 
+const database = require("./database");
+
 const {
     recordJoin,
     isSuspiciousAccount,
@@ -36,12 +38,29 @@ const config = require("./config");
 // ========================================
 
 if (!process.env.DISCORD_TOKEN) {
-    console.error("❌ DISCORD_TOKEN is missing.");
+
+    console.error(
+        "❌ DISCORD_TOKEN is missing."
+    );
+
     process.exit(1);
 }
 
 if (!process.env.CLIENT_ID) {
-    console.error("❌ CLIENT_ID is missing.");
+
+    console.error(
+        "❌ CLIENT_ID is missing."
+    );
+
+    process.exit(1);
+}
+
+if (!process.env.DATABASE_URL) {
+
+    console.error(
+        "❌ DATABASE_URL is missing."
+    );
+
     process.exit(1);
 }
 
@@ -51,20 +70,26 @@ if (!process.env.CLIENT_ID) {
 
 const app = express();
 
-const PORT = process.env.PORT || 10000;
+const PORT =
+    process.env.PORT || 10000;
 
 app.get("/", (req, res) => {
+
     res.status(200).send(
         "🛡️ Guardian Anti-Raid is online."
     );
 });
 
 app.get("/health", (req, res) => {
+
     res.status(200).json({
+
         status: "online",
+
         bot: client.isReady()
             ? "online"
             : "starting"
+
     });
 });
 
@@ -72,9 +97,11 @@ app.listen(
     PORT,
     "0.0.0.0",
     () => {
+
         console.log(
             `🌐 Web server running on port ${PORT}`
         );
+
     }
 );
 
@@ -83,12 +110,19 @@ app.listen(
 // ========================================
 
 const client = new Client({
+
     intents: [
+
         GatewayIntentBits.Guilds,
+
         GatewayIntentBits.GuildMembers,
+
         GatewayIntentBits.GuildMessages,
+
         GatewayIntentBits.MessageContent
+
     ]
+
 });
 
 // ========================================
@@ -124,7 +158,7 @@ client.once(
         );
 
         // ====================================
-        // DATABASE
+        // INITIALIZE DATABASE
         // ====================================
 
         try {
@@ -132,6 +166,14 @@ client.once(
             await database.initDatabase();
 
             await database.testDatabase();
+
+            console.log(
+                "✅ PostgreSQL database connected."
+            );
+
+            console.log(
+                "✅ Blocked words will persist across updates."
+            );
 
         } catch (error) {
 
@@ -316,16 +358,15 @@ client.on(
             }
 
             // ====================================
-            // CHECK FOR BLOCKED WORD
+            // FIND BLOCKED WORD
             // ====================================
 
             const blockedWord =
-                findBlockedWord(
+                await findBlockedWord(
                     message.guild.id,
                     message.content
                 );
 
-            // No blocked word
             if (!blockedWord) {
                 return;
             }
@@ -425,6 +466,17 @@ client.on(
         }
 
         try {
+
+            if (!interaction.guild) {
+
+                await interaction.reply({
+                    content:
+                        "❌ Guardian commands can only be used inside a server.",
+                    ephemeral: true
+                });
+
+                return;
+            }
 
             // ====================================
             // ADMIN CHECK
@@ -690,19 +742,22 @@ client.on(
                     return;
                 }
 
-                addBlockedWord(
-                    interaction.guild.id,
-                    word
-                );
+                const added =
+                    await addBlockedWord(
+                        interaction.guild.id,
+                        word
+                    );
 
                 await interaction.reply({
                     content:
-                        `✅ **${word}** has been added to the blocked-word list.\n\nUsers who say this word will have their message deleted and will be timed out for 24 hours.`,
+                        added
+                            ? `✅ **${word}** has been added to the permanent blocked-word list.\n\nMessages containing this word will be deleted and the user will be timed out for 24 hours.`
+                            : `⚠️ **${word}** could not be added.`,
                     ephemeral: true
                 });
 
                 console.log(
-                    `[WORD FILTER] Added blocked word "${word}" in ${interaction.guild.name}`
+                    `[WORD FILTER] Added "${word}" in ${interaction.guild.name}`
                 );
 
                 return;
@@ -724,7 +779,7 @@ client.on(
                         .toLowerCase();
 
                 const removed =
-                    removeBlockedWord(
+                    await removeBlockedWord(
                         interaction.guild.id,
                         word
                     );
@@ -732,7 +787,7 @@ client.on(
                 await interaction.reply({
                     content:
                         removed
-                            ? `✅ **${word}** has been removed.`
+                            ? `✅ **${word}** has been removed from the blocked-word list.`
                             : `⚠️ **${word}** was not found.`,
                     ephemeral: true
                 });
@@ -750,7 +805,7 @@ client.on(
             ) {
 
                 const words =
-                    getBlockedWords(
+                    await getBlockedWords(
                         interaction.guild.id
                     );
 
@@ -767,7 +822,7 @@ client.on(
 
                 await interaction.reply({
                     content:
-                        `🚨 **Blocked Words**\n\n${
+                        `🚨 **Permanent Blocked Words**\n\n${
                             words
                                 .map(
                                     word =>
