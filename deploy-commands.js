@@ -138,3 +138,27 @@ client.on("error", error => {
 client.login(
     process.env.DISCORD_TOKEN
 );
+
+new SlashCommandBuilder()
+    .setName("authorize")
+    .setDescription("Authorize a user to use Guardian.")
+    .addUserOption(option =>
+        option
+            .setName("user")
+            .setDescription("The user to authorize.")
+            .setRequired(true)
+    ),
+
+new SlashCommandBuilder()
+    .setName("unauthorize")
+    .setDescription("Remove a user's Guardian access.")
+    .addUserOption(option =>
+        option
+            .setName("user")
+            .setDescription("The user to unauthorize.")
+            .setRequired(true)
+    ),
+
+new SlashCommandBuilder()
+    .setName("authorized-list")
+    .setDescription("Show users authorized to use Guardian.")
