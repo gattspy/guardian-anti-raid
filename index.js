@@ -1,6 +1,3 @@
-const dashboard = require("./dashboard");
-const app = express();
-app.use("/dashboard", dashboard);
 require("dotenv").config();
 
 const express = require("express");
@@ -25,37 +22,40 @@ const {
 
 const config = require("./config");
 
-const app = express();
+// ===============================
+// EXPRESS / RENDER SERVER
+// ===============================
 
+const app = express();
 const PORT = process.env.PORT || 10000;
 
-/*
-    Render health check.
-*/
+// Dashboard
+try {
+    const dashboard = require("./dashboard");
+    app.use("/dashboard", dashboard);
+
+    console.log("Dashboard loaded.");
+} catch (error) {
+    console.error("Failed to load dashboard:", error);
+}
+
+// Health check
 app.get("/", (req, res) => {
-    res.send("Guardian Anti-Raid is online.");
+    res.status(200).send("Guardian Anti-Raid is online.");
 });
 
-app.listen(PORT, "0.0.0.0", () => {
-    app.locals.bot = client;
-
-app.locals.config = config;
-
-app.locals.lockdown = lockdown;
-
-app.locals.unlock = unlock;
-
-app.locals.getRaidState = function(guildId) {
-    return {
-        lockdown: isLockedDown(guildId)
-    };
-};
-    console.log(`Web server running on port ${PORT}`);
+// Render health check
+app.get("/health", (req, res) => {
+    res.status(200).json({
+        status: "online",
+        bot: client?.isReady() ? "online" : "starting"
+    });
 });
 
-/*
-    Discord client.
-*/
+// ===============================
+// DISCORD CLIENT
+// ===============================
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -65,9 +65,33 @@ const client = new Client({
     ]
 });
 
-/*
-    Bot ready.
-*/
+// ===============================
+// MAKE BOT AVAILABLE TO DASHBOARD
+// ===============================
+
+app.locals.bot = client;
+app.locals.config = config;
+app.locals.lockdown = lockdown;
+app.locals.unlock = unlock;
+
+app.locals.getRaidState = function (guildId) {
+    return {
+        lockdown: isLockedDown(guildId)
+    };
+};
+
+// ===============================
+// START WEB SERVER
+// ===============================
+
+app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Web server running on port ${PORT}`);
+});
+
+// ===============================
+// BOT READY
+// ===============================
+
 client.once("ready", () => {
     console.log(
         `Guardian Anti-Raid logged in as ${client.user.tag}`
@@ -78,33 +102,27 @@ client.once("ready", () => {
     );
 });
 
-/*
-    MEMBER JOIN
-*/
+// ===============================
+// MEMBER JOIN
+// ===============================
+
 client.on("guildMemberAdd", async member => {
     try {
         console.log(
             `[JOIN] ${member.user.tag} joined ${member.guild.name}`
         );
 
-        /*
-            Ignore bots.
-        */
+        // Ignore bots
         if (member.user.bot) {
             return;
         }
 
-        /*
-            Whitelisted users are never treated
-            as raid suspects.
-        */
+        // Ignore whitelisted users
         if (isWhitelisted(member)) {
             return;
         }
 
-        /*
-            Record the join.
-        */
+        // Record join
         const recentJoins = recordJoin(
             member.guild.id,
             member.id
@@ -114,10 +132,10 @@ client.on("guildMemberAdd", async member => {
             `[JOIN RATE] ${recentJoins} joins in the current window`
         );
 
-        /*
-            Check whether the join rate indicates
-            a possible raid.
-        */
+        // ===============================
+        // RAID DETECTION
+        // ===============================
+
         if (
             recentJoins >= config.raidJoinThreshold &&
             !isLockedDown(member.guild.id)
@@ -131,9 +149,7 @@ client.on("guildMemberAdd", async member => {
                 `${recentJoins} members joined within ${config.raidTimeWindow} seconds`
             );
 
-            /*
-                Alert server logs.
-            */
+            // Find raid logs channel
             const logChannel =
                 member.guild.channels.cache.find(
                     channel =>
@@ -144,7 +160,7 @@ client.on("guildMemberAdd", async member => {
                 const embed = new EmbedBuilder()
                     .setTitle("🚨 RAID DETECTED")
                     .setDescription(
-                        `Guardian Anti-Raid detected suspicious activity.`
+                        "Guardian Anti-Raid detected suspicious activity."
                     )
                     .addFields(
                         {
@@ -159,7 +175,7 @@ client.on("guildMemberAdd", async member => {
                         {
                             name: "Action",
                             value:
-                                `🔒 Server lockdown activated`
+                                "🔒 Server lockdown activated"
                         }
                     )
                     .setTimestamp();
@@ -170,15 +186,13 @@ client.on("guildMemberAdd", async member => {
             }
         }
 
-        /*
-            If the server is currently locked down,
-            treat new members more aggressively.
-        */
+        // ===============================
+        // LOCKDOWN MEMBER PROTECTION
+        // ===============================
+
         if (isLockedDown(member.guild.id)) {
 
-            /*
-                Extremely new accounts.
-            */
+            // Extremely suspicious account
             if (isExtremelySuspicious(member)) {
 
                 if (config.kickSuspiciousAccounts) {
@@ -197,10 +211,9 @@ client.on("guildMemberAdd", async member => {
                     return;
                 }
 
-                /*
-                    Otherwise quarantine them.
-                */
+                // Quarantine instead of kick
                 if (config.quarantineSuspiciousAccounts) {
+
                     await quarantineMember(member);
 
                     console.log(
@@ -211,12 +224,11 @@ client.on("guildMemberAdd", async member => {
                 return;
             }
 
-            /*
-                Accounts under the suspicious age threshold.
-            */
+            // Suspicious account age
             if (isSuspiciousAccount(member)) {
 
                 if (config.quarantineSuspiciousAccounts) {
+
                     await quarantineMember(member);
 
                     console.log(
@@ -227,6 +239,7 @@ client.on("guildMemberAdd", async member => {
         }
 
     } catch (error) {
+
         console.error(
             "Anti-raid join handler error:",
             error
@@ -234,74 +247,138 @@ client.on("guildMemberAdd", async member => {
     }
 });
 
-/*
-    Discord errors.
-*/
-client.on("error", error => {
-    console.error("Discord client error:", error);
-});
+// ===============================
+// SLASH COMMANDS
+// ===============================
 
-/*
-    Login.
-*/
-client.login(process.env.DISCORD_TOKEN);
-/*
-    Slash commands.
-*/
 client.on("interactionCreate", async interaction => {
 
     if (!interaction.isChatInputCommand()) {
         return;
     }
 
-    /*
-        Only administrators can use these commands.
-    */
-    if (
-        !interaction.memberPermissions.has(
-            "Administrator"
-        )
-    ) {
-        await interaction.reply({
-            content:
-                "❌ You need Administrator permission to use this command.",
-            ephemeral: true
-        });
+    try {
 
-        return;
-    }
+        // Administrator check
+        if (
+            !interaction.memberPermissions ||
+            !interaction.memberPermissions.has("Administrator")
+        ) {
 
-    if (interaction.commandName === "lockdown") {
+            await interaction.reply({
+                content:
+                    "❌ You need Administrator permission to use this command.",
+                ephemeral: true
+            });
 
-        await lockdown(
-            interaction.guild,
-            `Manual lockdown by ${interaction.user.tag}`
+            return;
+        }
+
+        // ===============================
+        // LOCKDOWN
+        // ===============================
+
+        if (interaction.commandName === "lockdown") {
+
+            await lockdown(
+                interaction.guild,
+                `Manual lockdown by ${interaction.user.tag}`
+            );
+
+            await interaction.reply(
+                "🔒 **SERVER LOCKDOWN ACTIVATED**"
+            );
+
+            return;
+        }
+
+        // ===============================
+        // UNLOCK
+        // ===============================
+
+        if (interaction.commandName === "unlock") {
+
+            await unlock(interaction.guild);
+
+            await interaction.reply(
+                "🔓 **SERVER LOCKDOWN REMOVED**"
+            );
+
+            return;
+        }
+
+        // ===============================
+        // RAID STATUS
+        // ===============================
+
+        if (interaction.commandName === "raidstatus") {
+
+            const status = isLockedDown(
+                interaction.guild.id
+            );
+
+            await interaction.reply(
+                status
+                    ? "🚨 **RAID LOCKDOWN ACTIVE**"
+                    : "🟢 **No lockdown is currently active.**"
+            );
+
+            return;
+        }
+
+    } catch (error) {
+
+        console.error(
+            "Interaction error:",
+            error
         );
 
-        await interaction.reply(
-            "🔒 **SERVER LOCKDOWN ACTIVATED**"
-        );
-    }
+        if (interaction.replied || interaction.deferred) {
 
-    if (interaction.commandName === "unlock") {
+            await interaction.followUp({
+                content: "❌ Something went wrong while running that command.",
+                ephemeral: true
+            });
 
-        await unlock(interaction.guild);
+        } else {
 
-        await interaction.reply(
-            "🔓 **SERVER LOCKDOWN REMOVED**"
-        );
-    }
-
-    if (interaction.commandName === "raidstatus") {
-
-        const status = isLockedDown(
-            interaction.guild.id
-        );
-
-        await interaction.reply(
-            status
-                ? "🚨 **RAID LOCKDOWN ACTIVE**"
-                : "🟢 **No lockdown is currently active.**"
-        );
+            await interaction.reply({
+                content: "❌ Something went wrong while running that command.",
+                ephemeral: true
+            });
+        }
     }
 });
+
+// ===============================
+// DISCORD ERRORS
+// ===============================
+
+client.on("error", error => {
+    console.error(
+        "Discord client error:",
+        error
+    );
+});
+
+client.on("warn", warning => {
+    console.warn(
+        "Discord warning:",
+        warning
+    );
+});
+
+// ===============================
+// LOGIN
+// ===============================
+
+if (!process.env.DISCORD_TOKEN) {
+
+    console.error(
+        "❌ DISCORD_TOKEN is missing from environment variables."
+    );
+
+    process.exit(1);
+}
+
+client.login(process.env.DISCORD_TOKEN);
