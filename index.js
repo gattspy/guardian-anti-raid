@@ -24,7 +24,8 @@ const {
 
     addBlockedWord,
     removeBlockedWord,
-    getBlockedWords
+    getBlockedWords,
+    findBlockedWord
 
 } = require("./antiRaid");
 
@@ -120,6 +121,10 @@ client.once(
 
         console.log(
             "New-account protection: 24 hours"
+        );
+
+        console.log(
+            "Banned-word timeout: 24 hours"
         );
     }
 );
@@ -276,6 +281,121 @@ client.on(
 );
 
 // ========================================
+// BANNED WORD FILTER
+// ========================================
+
+client.on(
+    "messageCreate",
+    async message => {
+
+        try {
+
+            // Ignore bots
+            if (message.author.bot) {
+                return;
+            }
+
+            // Ignore DMs
+            if (!message.guild) {
+                return;
+            }
+
+            // ====================================
+            // CHECK FOR BLOCKED WORD
+            // ====================================
+
+            const blockedWord =
+                findBlockedWord(
+                    message.guild.id,
+                    message.content
+                );
+
+            // No blocked word
+            if (!blockedWord) {
+                return;
+            }
+
+            console.log(
+                `[WORD FILTER] ${message.author.tag} used blocked word: ${blockedWord}`
+            );
+
+            // ====================================
+            // DELETE MESSAGE
+            // ====================================
+
+            try {
+
+                if (message.deletable) {
+
+                    await message.delete();
+
+                    console.log(
+                        `[WORD FILTER] Deleted message from ${message.author.tag}`
+                    );
+
+                } else {
+
+                    console.log(
+                        `[WORD FILTER] Cannot delete message from ${message.author.tag}`
+                    );
+                }
+
+            } catch (error) {
+
+                console.error(
+                    "❌ Could not delete banned-word message:",
+                    error.message
+                );
+            }
+
+            // ====================================
+            // GET MEMBER
+            // ====================================
+
+            const member =
+                message.member;
+
+            if (!member) {
+                return;
+            }
+
+            // ====================================
+            // 24 HOUR TIMEOUT
+            // ====================================
+
+            const timeoutDuration =
+                config.wordTimeoutDuration ||
+                24 * 60 * 60 * 1000;
+
+            if (member.moderatable) {
+
+                await member.timeout(
+                    timeoutDuration,
+                    `Guardian Anti-Raid: used blocked word "${blockedWord}"`
+                );
+
+                console.log(
+                    `[WORD FILTER] ⏱️ Timed out ${message.author.tag} for 24 hours.`
+                );
+
+            } else {
+
+                console.log(
+                    `[WORD FILTER] ❌ Cannot timeout ${message.author.tag}. Check bot role position and permissions.`
+                );
+            }
+
+        } catch (error) {
+
+            console.error(
+                "❌ Banned word filter error:",
+                error
+            );
+        }
+    }
+);
+
+// ========================================
 // SLASH COMMANDS
 // ========================================
 
@@ -311,8 +431,7 @@ client.on(
                 );
 
             // ====================================
-            // AUTHORIZE COMMAND
-            // ONLY ADMINS
+            // /AUTHORIZE
             // ====================================
 
             if (
@@ -355,8 +474,7 @@ client.on(
             }
 
             // ====================================
-            // UNAUTHORIZE COMMAND
-            // ONLY ADMINS
+            // /UNAUTHORIZE
             // ====================================
 
             if (
@@ -398,8 +516,7 @@ client.on(
             }
 
             // ====================================
-            // AUTHORIZED LIST
-            // ONLY ADMINS
+            // /AUTHORIZED-LIST
             // ====================================
 
             if (
@@ -451,7 +568,7 @@ client.on(
             }
 
             // ====================================
-            // ALL OTHER COMMANDS
+            // AUTHORIZATION FOR OTHER COMMANDS
             // ====================================
 
             if (
@@ -547,6 +664,17 @@ client.on(
                         .trim()
                         .toLowerCase();
 
+                if (!word) {
+
+                    await interaction.reply({
+                        content:
+                            "❌ You must provide a word.",
+                        ephemeral: true
+                    });
+
+                    return;
+                }
+
                 addBlockedWord(
                     interaction.guild.id,
                     word
@@ -554,9 +682,13 @@ client.on(
 
                 await interaction.reply({
                     content:
-                        `✅ **${word}** has been added to the blocked-word list.`,
+                        `✅ **${word}** has been added to the blocked-word list.\n\nUsers who say this word will have their message deleted and will be timed out for 24 hours.`,
                     ephemeral: true
                 });
+
+                console.log(
+                    `[WORD FILTER] Added blocked word "${word}" in ${interaction.guild.name}`
+                );
 
                 return;
             }
