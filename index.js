@@ -6,15 +6,16 @@ const {
     lockdown,
     unlock,
     isLockedDown,
-    addBlockedWord,
-    removeBlockedWord,
-    getBlockedWords,
-    findBlockedWord,
 
     authorizeUser,
     unauthorizeUser,
     isAuthorizedUser,
-    getAuthorizedUsers
+    getAuthorizedUsers,
+
+    addBlockedWord,
+    removeBlockedWord,
+    getBlockedWords,
+    findBlockedWord
 
 } = require("./antiRaid");
 
