@@ -358,7 +358,6 @@ function getAuthorizedUsers(guildId) {
 
 // ========================================
 // ADD BLOCKED WORD
-// DATABASE VERSION
 // ========================================
 
 async function addBlockedWord(
@@ -366,39 +365,53 @@ async function addBlockedWord(
     word
 ) {
 
-    if (!guildId || !word) {
-        return false;
-    }
+    return await database.addBlockedWord(
+        guildId,
+        word
+    );
+}
 
-    const cleanWord =
-        word.trim().toLowerCase();
+// ========================================
+// REMOVE BLOCKED WORD
+// ========================================
 
-    if (!cleanWord) {
-        return false;
-    }
+async function removeBlockedWord(
+    guildId,
+    word
+) {
 
-    try {
+    return await database.removeBlockedWord(
+        guildId,
+        word
+    );
+}
 
-        await db.addBlockedWord(
-            guildId,
-            cleanWord
-        );
+// ========================================
+// GET BLOCKED WORDS
+// ========================================
 
-        console.log(
-            `[WORD ADD] ${cleanWord} added to ${guildId}`
-        );
+async function getBlockedWords(
+    guildId
+) {
 
-        return true;
+    return await database.getBlockedWords(
+        guildId
+    );
+}
 
-    } catch (error) {
+// ========================================
+// FIND BLOCKED WORD
+// ========================================
 
-        console.error(
-            "[DATABASE] Failed to add blocked word:",
-            error
-        );
+async function findBlockedWord(
+    guildId,
+    message
+) {
 
-        return false;
-    }
+    return await database.findBlockedWord(
+        guildId,
+        message
+    );
 }
 
 // ========================================
