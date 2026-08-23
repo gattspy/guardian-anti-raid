@@ -6,26 +6,19 @@ const { Pool } = require("pg");
 // DATABASE CONFIGURATION
 // ========================================
 
-const databaseUrl = process.env.DATABASE_URL;
+if (!process.env.DATABASE_URL) {
 
-if (!databaseUrl) {
-    console.error("❌ DATABASE_URL is missing.");
+    console.error(
+        "❌ DATABASE_URL is missing."
+    );
+
     process.exit(1);
 }
 
-// Prevent common Render mistake:
-// DATABASE_URL must be the COMPLETE PostgreSQL URL.
-if (
-    databaseUrl.includes("localhost") ||
-    databaseUrl.includes("127.0.0.1")
-) {
-    console.warn(
-        "⚠️ DATABASE_URL appears to point to localhost."
-    );
-}
-
 const pool = new Pool({
-    connectionString: databaseUrl,
+
+    connectionString:
+        process.env.DATABASE_URL,
 
     ssl: {
         rejectUnauthorized: false
@@ -33,9 +26,11 @@ const pool = new Pool({
 
     max: 10,
 
-    idleTimeoutMillis: 30000,
+    idleTimeoutMillis:
+        30000,
 
-    connectionTimeoutMillis: 10000
+    connectionTimeoutMillis:
+        10000
 });
 
 let databaseReady = false;
@@ -46,9 +41,8 @@ let databaseReady = false;
 
 async function initDatabase() {
 
-    console.log("🔄 Connecting to PostgreSQL...");
-
-    const client = await pool.connect();
+    const client =
+        await pool.connect();
 
     try {
 
@@ -65,7 +59,6 @@ async function initDatabase() {
                 guild_id TEXT NOT NULL,
                 word TEXT NOT NULL,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
-
                 PRIMARY KEY (guild_id, word)
             );
         `);
@@ -79,7 +72,6 @@ async function initDatabase() {
                 guild_id TEXT NOT NULL,
                 user_id TEXT NOT NULL,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
-
                 PRIMARY KEY (guild_id, user_id)
             );
         `);
@@ -93,7 +85,6 @@ async function initDatabase() {
                 guild_id TEXT NOT NULL,
                 user_id TEXT NOT NULL,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
-
                 PRIMARY KEY (guild_id, user_id)
             );
         `);
@@ -107,7 +98,6 @@ async function initDatabase() {
                 guild_id TEXT NOT NULL,
                 role_id TEXT NOT NULL,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
-
                 PRIMARY KEY (guild_id, role_id)
             );
         `);
@@ -121,7 +111,6 @@ async function initDatabase() {
                 guild_id TEXT NOT NULL,
                 role_id TEXT NOT NULL,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
-
                 PRIMARY KEY (guild_id, role_id)
             );
         `);
@@ -137,10 +126,9 @@ async function initDatabase() {
         databaseReady = false;
 
         console.error(
-            "❌ Failed to initialize PostgreSQL:"
+            "❌ Failed to initialize PostgreSQL:",
+            error
         );
-
-        console.error(error);
 
         throw error;
 
@@ -162,9 +150,10 @@ async function testDatabase() {
         );
     }
 
-    const result = await pool.query(
-        "SELECT NOW() AS time"
-    );
+    const result =
+        await pool.query(
+            "SELECT NOW() AS time"
+        );
 
     console.log(
         `✅ PostgreSQL connection test successful: ${result.rows[0].time}`
@@ -209,33 +198,26 @@ async function addBlockedWord(
         return false;
     }
 
-    const result = await pool.query(
-        `
-        INSERT INTO blocked_words
-            (guild_id, word)
-
-        VALUES
-            ($1, $2)
-
-        ON CONFLICT
-            (guild_id, word)
-
-        DO NOTHING
-
-        RETURNING word;
-        `,
-        [
-            guildId,
-            cleanWord
-        ]
-    );
+    const result =
+        await pool.query(
+            `
+            INSERT INTO blocked_words
+                (guild_id, word)
+            VALUES
+                ($1, $2)
+            ON CONFLICT
+                (guild_id, word)
+            DO NOTHING
+            RETURNING word;
+            `,
+            [
+                guildId,
+                cleanWord
+            ]
+        );
 
     return result.rowCount > 0;
 }
-
-// ========================================
-// REMOVE BLOCKED WORD
-// ========================================
 
 async function removeBlockedWord(
     guildId,
@@ -257,27 +239,22 @@ async function removeBlockedWord(
             .trim()
             .toLowerCase();
 
-    const result = await pool.query(
-        `
-        DELETE FROM blocked_words
-
-        WHERE guild_id = $1
-        AND word = $2
-
-        RETURNING word;
-        `,
-        [
-            guildId,
-            cleanWord
-        ]
-    );
+    const result =
+        await pool.query(
+            `
+            DELETE FROM blocked_words
+            WHERE guild_id = $1
+            AND word = $2
+            RETURNING word;
+            `,
+            [
+                guildId,
+                cleanWord
+            ]
+        );
 
     return result.rowCount > 0;
 }
-
-// ========================================
-// GET BLOCKED WORDS
-// ========================================
 
 async function getBlockedWords(
     guildId
@@ -293,27 +270,21 @@ async function getBlockedWords(
         return [];
     }
 
-    const result = await pool.query(
-        `
-        SELECT word
-
-        FROM blocked_words
-
-        WHERE guild_id = $1
-
-        ORDER BY word ASC;
-        `,
-        [guildId]
-    );
+    const result =
+        await pool.query(
+            `
+            SELECT word
+            FROM blocked_words
+            WHERE guild_id = $1
+            ORDER BY word ASC;
+            `,
+            [guildId]
+        );
 
     return result.rows.map(
         row => row.word
     );
 }
-
-// ========================================
-// FIND BLOCKED WORD
-// ========================================
 
 async function findBlockedWord(
     guildId,
@@ -331,10 +302,13 @@ async function findBlockedWord(
     }
 
     const words =
-        await getBlockedWords(guildId);
+        await getBlockedWords(
+            guildId
+        );
 
     const content =
-        String(message).toLowerCase();
+        String(message)
+            .toLowerCase();
 
     for (const word of words) {
 
@@ -377,32 +351,28 @@ async function authorizeUser(
         return false;
     }
 
-    const result = await pool.query(
-        `
-        INSERT INTO authorized_users
-            (guild_id, user_id)
+    const result =
+        await pool.query(
+            `
+            INSERT INTO authorized_users
+                (guild_id, user_id)
+            VALUES
+                ($1, $2)
+            ON CONFLICT
+                (guild_id, user_id)
+            DO NOTHING
+            RETURNING user_id;
+            `,
+            [
+                guildId,
+                userId
+            ]
+        );
 
-        VALUES
-            ($1, $2)
-
-        ON CONFLICT
-            (guild_id, user_id)
-
-        DO NOTHING
-
-        RETURNING user_id;
-        `,
-        [
-            guildId,
-            userId
-        ]
-    );
-
-    // Remove from unauthorized list.
+    // Remove explicit deny.
     await pool.query(
         `
         DELETE FROM unauthorized_users
-
         WHERE guild_id = $1
         AND user_id = $2;
         `,
@@ -416,7 +386,7 @@ async function authorizeUser(
 }
 
 // ========================================
-// UNAUTHORIZE USER
+// UNAUTHORIZED USERS
 // ========================================
 
 async function unauthorizeUser(
@@ -434,32 +404,28 @@ async function unauthorizeUser(
         return false;
     }
 
-    const result = await pool.query(
-        `
-        INSERT INTO unauthorized_users
-            (guild_id, user_id)
+    const result =
+        await pool.query(
+            `
+            INSERT INTO unauthorized_users
+                (guild_id, user_id)
+            VALUES
+                ($1, $2)
+            ON CONFLICT
+                (guild_id, user_id)
+            DO NOTHING
+            RETURNING user_id;
+            `,
+            [
+                guildId,
+                userId
+            ]
+        );
 
-        VALUES
-            ($1, $2)
-
-        ON CONFLICT
-            (guild_id, user_id)
-
-        DO NOTHING
-
-        RETURNING user_id;
-        `,
-        [
-            guildId,
-            userId
-        ]
-    );
-
-    // Remove from authorized list.
+    // Remove explicit allow.
     await pool.query(
         `
         DELETE FROM authorized_users
-
         WHERE guild_id = $1
         AND user_id = $2;
         `,
@@ -473,7 +439,7 @@ async function unauthorizeUser(
 }
 
 // ========================================
-// IS AUTHORIZED USER
+// CHECK AUTHORIZED USER
 // ========================================
 
 async function isAuthorizedUser(
@@ -485,28 +451,26 @@ async function isAuthorizedUser(
         return false;
     }
 
-    const result = await pool.query(
-        `
-        SELECT 1
-
-        FROM authorized_users
-
-        WHERE guild_id = $1
-        AND user_id = $2
-
-        LIMIT 1;
-        `,
-        [
-            guildId,
-            userId
-        ]
-    );
+    const result =
+        await pool.query(
+            `
+            SELECT user_id
+            FROM authorized_users
+            WHERE guild_id = $1
+            AND user_id = $2
+            LIMIT 1;
+            `,
+            [
+                guildId,
+                userId
+            ]
+        );
 
     return result.rowCount > 0;
 }
 
 // ========================================
-// IS UNAUTHORIZED USER
+// CHECK UNAUTHORIZED USER
 // ========================================
 
 async function isUnauthorizedUser(
@@ -518,22 +482,20 @@ async function isUnauthorizedUser(
         return false;
     }
 
-    const result = await pool.query(
-        `
-        SELECT 1
-
-        FROM unauthorized_users
-
-        WHERE guild_id = $1
-        AND user_id = $2
-
-        LIMIT 1;
-        `,
-        [
-            guildId,
-            userId
-        ]
-    );
+    const result =
+        await pool.query(
+            `
+            SELECT user_id
+            FROM unauthorized_users
+            WHERE guild_id = $1
+            AND user_id = $2
+            LIMIT 1;
+            `,
+            [
+                guildId,
+                userId
+            ]
+        );
 
     return result.rowCount > 0;
 }
@@ -552,18 +514,16 @@ async function getAuthorizedUsers(
         );
     }
 
-    const result = await pool.query(
-        `
-        SELECT user_id
-
-        FROM authorized_users
-
-        WHERE guild_id = $1
-
-        ORDER BY created_at ASC;
-        `,
-        [guildId]
-    );
+    const result =
+        await pool.query(
+            `
+            SELECT user_id
+            FROM authorized_users
+            WHERE guild_id = $1
+            ORDER BY created_at ASC;
+            `,
+            [guildId]
+        );
 
     return result.rows.map(
         row => row.user_id
@@ -584,18 +544,16 @@ async function getUnauthorizedUsers(
         );
     }
 
-    const result = await pool.query(
-        `
-        SELECT user_id
-
-        FROM unauthorized_users
-
-        WHERE guild_id = $1
-
-        ORDER BY created_at ASC;
-        `,
-        [guildId]
-    );
+    const result =
+        await pool.query(
+            `
+            SELECT user_id
+            FROM unauthorized_users
+            WHERE guild_id = $1
+            ORDER BY created_at ASC;
+            `,
+            [guildId]
+        );
 
     return result.rows.map(
         row => row.user_id
@@ -621,32 +579,28 @@ async function authorizeRole(
         return false;
     }
 
-    const result = await pool.query(
-        `
-        INSERT INTO authorized_roles
-            (guild_id, role_id)
+    const result =
+        await pool.query(
+            `
+            INSERT INTO authorized_roles
+                (guild_id, role_id)
+            VALUES
+                ($1, $2)
+            ON CONFLICT
+                (guild_id, role_id)
+            DO NOTHING
+            RETURNING role_id;
+            `,
+            [
+                guildId,
+                roleId
+            ]
+        );
 
-        VALUES
-            ($1, $2)
-
-        ON CONFLICT
-            (guild_id, role_id)
-
-        DO NOTHING
-
-        RETURNING role_id;
-        `,
-        [
-            guildId,
-            roleId
-        ]
-    );
-
-    // Remove from unauthorized roles.
+    // Remove explicit deny.
     await pool.query(
         `
         DELETE FROM unauthorized_roles
-
         WHERE guild_id = $1
         AND role_id = $2;
         `,
@@ -660,7 +614,7 @@ async function authorizeRole(
 }
 
 // ========================================
-// UNAUTHORIZE ROLE
+// UNAUTHORIZED ROLES
 // ========================================
 
 async function unauthorizeRole(
@@ -678,32 +632,28 @@ async function unauthorizeRole(
         return false;
     }
 
-    const result = await pool.query(
-        `
-        INSERT INTO unauthorized_roles
-            (guild_id, role_id)
+    const result =
+        await pool.query(
+            `
+            INSERT INTO unauthorized_roles
+                (guild_id, role_id)
+            VALUES
+                ($1, $2)
+            ON CONFLICT
+                (guild_id, role_id)
+            DO NOTHING
+            RETURNING role_id;
+            `,
+            [
+                guildId,
+                roleId
+            ]
+        );
 
-        VALUES
-            ($1, $2)
-
-        ON CONFLICT
-            (guild_id, role_id)
-
-        DO NOTHING
-
-        RETURNING role_id;
-        `,
-        [
-            guildId,
-            roleId
-        ]
-    );
-
-    // Remove from authorized roles.
+    // Remove explicit allow.
     await pool.query(
         `
         DELETE FROM authorized_roles
-
         WHERE guild_id = $1
         AND role_id = $2;
         `,
@@ -717,7 +667,7 @@ async function unauthorizeRole(
 }
 
 // ========================================
-// IS AUTHORIZED ROLE
+// CHECK AUTHORIZED ROLE
 // ========================================
 
 async function isAuthorizedRole(
@@ -729,28 +679,26 @@ async function isAuthorizedRole(
         return false;
     }
 
-    const result = await pool.query(
-        `
-        SELECT 1
-
-        FROM authorized_roles
-
-        WHERE guild_id = $1
-        AND role_id = $2
-
-        LIMIT 1;
-        `,
-        [
-            guildId,
-            roleId
-        ]
-    );
+    const result =
+        await pool.query(
+            `
+            SELECT role_id
+            FROM authorized_roles
+            WHERE guild_id = $1
+            AND role_id = $2
+            LIMIT 1;
+            `,
+            [
+                guildId,
+                roleId
+            ]
+        );
 
     return result.rowCount > 0;
 }
 
 // ========================================
-// IS UNAUTHORIZED ROLE
+// CHECK UNAUTHORIZED ROLE
 // ========================================
 
 async function isUnauthorizedRole(
@@ -762,22 +710,20 @@ async function isUnauthorizedRole(
         return false;
     }
 
-    const result = await pool.query(
-        `
-        SELECT 1
-
-        FROM unauthorized_roles
-
-        WHERE guild_id = $1
-        AND role_id = $2
-
-        LIMIT 1;
-        `,
-        [
-            guildId,
-            roleId
-        ]
-    );
+    const result =
+        await pool.query(
+            `
+            SELECT role_id
+            FROM unauthorized_roles
+            WHERE guild_id = $1
+            AND role_id = $2
+            LIMIT 1;
+            `,
+            [
+                guildId,
+                roleId
+            ]
+        );
 
     return result.rowCount > 0;
 }
@@ -796,18 +742,16 @@ async function getAuthorizedRoles(
         );
     }
 
-    const result = await pool.query(
-        `
-        SELECT role_id
-
-        FROM authorized_roles
-
-        WHERE guild_id = $1
-
-        ORDER BY created_at ASC;
-        `,
-        [guildId]
-    );
+    const result =
+        await pool.query(
+            `
+            SELECT role_id
+            FROM authorized_roles
+            WHERE guild_id = $1
+            ORDER BY created_at ASC;
+            `,
+            [guildId]
+        );
 
     return result.rows.map(
         row => row.role_id
@@ -828,18 +772,16 @@ async function getUnauthorizedRoles(
         );
     }
 
-    const result = await pool.query(
-        `
-        SELECT role_id
-
-        FROM unauthorized_roles
-
-        WHERE guild_id = $1
-
-        ORDER BY created_at ASC;
-        `,
-        [guildId]
-    );
+    const result =
+        await pool.query(
+            `
+            SELECT role_id
+            FROM unauthorized_roles
+            WHERE guild_id = $1
+            ORDER BY created_at ASC;
+            `,
+            [guildId]
+        );
 
     return result.rows.map(
         row => row.role_id
@@ -858,13 +800,11 @@ module.exports = {
     testDatabase,
     isDatabaseReady,
 
-    // Blocked words
     addBlockedWord,
     removeBlockedWord,
     getBlockedWords,
     findBlockedWord,
 
-    // Users
     authorizeUser,
     unauthorizeUser,
     isAuthorizedUser,
@@ -872,7 +812,6 @@ module.exports = {
     getAuthorizedUsers,
     getUnauthorizedUsers,
 
-    // Roles
     authorizeRole,
     unauthorizeRole,
     isAuthorizedRole,
