@@ -18,7 +18,8 @@ function getGuildState(guildId) {
             joins: [],
             lockdown: false,
             lockdownTimer: null,
-            whitelistedUsers: new Set()
+            whitelistedUsers: new Set(),
+            blockedWords: new Set()
         });
 
     }
@@ -147,10 +148,8 @@ async function lockdown(
         try {
 
             if (
-                channel.type ===
-                    ChannelType.GuildText ||
-                channel.type ===
-                    ChannelType.GuildAnnouncement
+                channel.type === ChannelType.GuildText ||
+                channel.type === ChannelType.GuildAnnouncement
             ) {
 
                 await channel.permissionOverwrites.edit(
@@ -219,10 +218,8 @@ async function unlock(guild) {
         try {
 
             if (
-                channel.type ===
-                    ChannelType.GuildText ||
-                channel.type ===
-                    ChannelType.GuildAnnouncement
+                channel.type === ChannelType.GuildText ||
+                channel.type === ChannelType.GuildAnnouncement
             ) {
 
                 await channel.permissionOverwrites.edit(
@@ -267,7 +264,7 @@ function isLockedDown(guildId) {
 }
 
 // ========================================
-// WHITELIST USER
+// WHITELIST
 // ========================================
 
 function whitelistUser(
@@ -275,27 +272,21 @@ function whitelistUser(
     userId
 ) {
 
-    const state =
-        getGuildState(guildId);
-
-    state.whitelistedUsers.add(
+    getGuildState(
+        guildId
+    ).whitelistedUsers.add(
         userId
     );
 }
-
-// ========================================
-// REMOVE WHITELIST
-// ========================================
 
 function removeWhitelist(
     guildId,
     userId
 ) {
 
-    const state =
-        getGuildState(guildId);
-
-    state.whitelistedUsers.delete(
+    getGuildState(
+        guildId
+    ).whitelistedUsers.delete(
         userId
     );
 }
@@ -321,29 +312,116 @@ function getRecentJoinCount(guildId) {
 }
 
 // ========================================
+// BLOCKED WORDS
+// ========================================
+
+function addBlockedWord(
+    guildId,
+    word
+) {
+
+    const state =
+        getGuildState(guildId);
+
+    state.blockedWords.add(
+        word.toLowerCase()
+    );
+
+    return true;
+}
+
+// ========================================
+// REMOVE BLOCKED WORD
+// ========================================
+
+function removeBlockedWord(
+    guildId,
+    word
+) {
+
+    const state =
+        getGuildState(guildId);
+
+    return state.blockedWords.delete(
+        word.toLowerCase()
+    );
+}
+
+// ========================================
+// GET BLOCKED WORDS
+// ========================================
+
+function getBlockedWords(guildId) {
+
+    const state =
+        getGuildState(guildId);
+
+    return [
+        ...state.blockedWords
+    ];
+}
+
+// ========================================
+// FIND BLOCKED WORD
+// ========================================
+
+function findBlockedWord(
+    guildId,
+    message
+) {
+
+    const state =
+        getGuildState(guildId);
+
+    const content =
+        message.toLowerCase();
+
+    for (
+        const word of state.blockedWords
+    ) {
+
+        const escapedWord =
+            word.replace(
+                /[.*+?^${}()|[\]\\]/g,
+                "\\$&"
+            );
+
+        const regex =
+            new RegExp(
+                `\\b${escapedWord}\\b`,
+                "i"
+            );
+
+        if (regex.test(content)) {
+            return word;
+        }
+    }
+
+    return null;
+}
+
+// ========================================
 // EXPORTS
 // ========================================
 
 module.exports = {
 
     recordJoin,
-
     isSuspiciousAccount,
-
     isWhitelisted,
-
     kickMember,
 
     lockdown,
-
     unlock,
-
     isLockedDown,
 
     whitelistUser,
-
     removeWhitelist,
 
-    getRecentJoinCount
+    getRecentJoinCount,
 
+    addBlockedWord,
+    removeBlockedWord,
+    getBlockedWords,
+    findBlockedWord
 };
