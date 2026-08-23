@@ -6,12 +6,15 @@ const { Pool } = require("pg");
 // DATABASE CONFIGURATION
 // ========================================
 
-if (!process.env.DATABASE_URL) {
+const databaseUrl = process.env.DATABASE_URL;
+
+if (!databaseUrl) {
     console.error("❌ DATABASE_URL is missing.");
+    console.error("❌ Add DATABASE_URL to Render Environment Variables.");
 }
 
 const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: databaseUrl,
 
     ssl: {
         rejectUnauthorized: false
@@ -24,7 +27,24 @@ const pool = new Pool({
     connectionTimeoutMillis: 10000
 });
 
+// ========================================
+// DATABASE STATE
+// ========================================
+
 let databaseReady = false;
+
+// ========================================
+// DATABASE ERROR HANDLER
+// ========================================
+
+pool.on("error", error => {
+
+    console.error(
+        "❌ PostgreSQL pool error:",
+        error.message
+    );
+
+});
 
 // ========================================
 // INITIALIZE DATABASE
@@ -32,11 +52,16 @@ let databaseReady = false;
 
 async function initDatabase() {
 
-    if (!process.env.DATABASE_URL) {
+    if (!databaseUrl) {
+
         throw new Error(
             "DATABASE_URL environment variable is missing."
         );
     }
+
+    console.log(
+        "🔄 Connecting to PostgreSQL..."
+    );
 
     const client =
         await pool.connect();
@@ -48,7 +73,7 @@ async function initDatabase() {
         );
 
         // ====================================
-        // BLOCKED WORDS TABLE
+        // BLOCKED WORDS
         // ====================================
 
         await client.query(`
@@ -62,7 +87,7 @@ async function initDatabase() {
         `);
 
         // ====================================
-        // AUTHORIZED USERS TABLE
+        // AUTHORIZED USERS
         // ====================================
 
         await client.query(`
@@ -81,13 +106,26 @@ async function initDatabase() {
             "✅ PostgreSQL tables are ready."
         );
 
+        console.log(
+            "✅ Blocked words database ready."
+        );
+
+        console.log(
+            "✅ Authorized users database ready."
+        );
+
+        return true;
+
     } catch (error) {
 
         databaseReady = false;
 
         console.error(
-            "❌ Failed to initialize PostgreSQL:",
-            error
+            "❌ PostgreSQL initialization failed:"
+        );
+
+        console.error(
+            error.message
         );
 
         throw error;
@@ -105,6 +143,7 @@ async function initDatabase() {
 async function testDatabase() {
 
     if (!databaseReady) {
+
         throw new Error(
             "Database is not ready."
         );
@@ -127,13 +166,12 @@ async function testDatabase() {
 // ========================================
 
 function isDatabaseReady() {
+
     return databaseReady;
 }
 
 // ========================================
-// ================================
 // BLOCKED WORDS
-// ================================
 // ========================================
 
 // ========================================
@@ -146,6 +184,7 @@ async function addBlockedWord(
 ) {
 
     if (!databaseReady) {
+
         throw new Error(
             "Database is not ready."
         );
@@ -156,7 +195,7 @@ async function addBlockedWord(
     }
 
     const cleanWord =
-        word
+        String(word)
             .trim()
             .toLowerCase();
 
@@ -199,6 +238,7 @@ async function removeBlockedWord(
 ) {
 
     if (!databaseReady) {
+
         throw new Error(
             "Database is not ready."
         );
@@ -209,7 +249,7 @@ async function removeBlockedWord(
     }
 
     const cleanWord =
-        word
+        String(word)
             .trim()
             .toLowerCase();
 
@@ -241,6 +281,7 @@ async function getBlockedWords(
 ) {
 
     if (!databaseReady) {
+
         throw new Error(
             "Database is not ready."
         );
@@ -261,7 +302,9 @@ async function getBlockedWords(
 
             ORDER BY word ASC;
             `,
-            [guildId]
+            [
+                guildId
+            ]
         );
 
     return result.rows.map(
@@ -279,6 +322,7 @@ async function findBlockedWord(
 ) {
 
     if (!databaseReady) {
+
         throw new Error(
             "Database is not ready."
         );
@@ -311,6 +355,7 @@ async function findBlockedWord(
             );
 
         if (regex.test(content)) {
+
             return word;
         }
     }
@@ -319,9 +364,7 @@ async function findBlockedWord(
 }
 
 // ========================================
-// ================================
 // AUTHORIZED USERS
-// ================================
 // ========================================
 
 // ========================================
@@ -334,6 +377,7 @@ async function authorizeUser(
 ) {
 
     if (!databaseReady) {
+
         throw new Error(
             "Database is not ready."
         );
@@ -378,6 +422,7 @@ async function unauthorizeUser(
 ) {
 
     if (!databaseReady) {
+
         throw new Error(
             "Database is not ready."
         );
@@ -453,6 +498,7 @@ async function getAuthorizedUsers(
 ) {
 
     if (!databaseReady) {
+
         throw new Error(
             "Database is not ready."
         );
@@ -473,7 +519,9 @@ async function getAuthorizedUsers(
 
             ORDER BY created_at ASC;
             `,
-            [guildId]
+            [
+                guildId
+            ]
         );
 
     return result.rows.map(
