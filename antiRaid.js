@@ -1,42 +1,38 @@
 const {
-    ChannelType
+    ChannelType,
+    PermissionFlagsBits
 } = require("discord.js");
 
 const config = require("./config");
 
-const guildStates = new Map();
+// ========================================
+// SERVER STATE
+// ========================================
 
-// ========================================
-// GET SERVER STATE
-// ========================================
+const guildStates = new Map();
 
 function getGuildState(guildId) {
 
     if (!guildStates.has(guildId)) {
 
         guildStates.set(guildId, {
-
             joins: [],
-
             lockdown: false,
-
             lockdownTimer: null,
 
             whitelistedUsers: new Set(),
 
-            blockedWords: new Set(),
+            authorizedUsers: new Set(),
 
-            authorizedUsers: new Set()
-
+            blockedWords: new Set()
         });
-
     }
 
     return guildStates.get(guildId);
 }
 
 // ========================================
-// RECORD JOIN
+// RECORD MEMBER JOIN
 // ========================================
 
 function recordJoin(guildId, userId) {
@@ -58,17 +54,20 @@ function recordJoin(guildId, userId) {
                 now - join.timestamp <=
                 config.raidTimeWindow * 1000
             );
-
         });
 
     return state.joins.length;
 }
 
 // ========================================
-// ACCOUNT AGE
+// CHECK ACCOUNT AGE
 // ========================================
 
 function isSuspiciousAccount(member) {
+
+    if (!member || !member.user) {
+        return false;
+    }
 
     const accountAge =
         Date.now() -
@@ -86,6 +85,10 @@ function isSuspiciousAccount(member) {
 
 function isWhitelisted(member) {
 
+    if (!member || !member.guild) {
+        return false;
+    }
+
     const state =
         getGuildState(
             member.guild.id
@@ -102,15 +105,19 @@ function isWhitelisted(member) {
 
 async function kickMember(
     member,
-    reason
+    reason = "Guardian Anti-Raid protection"
 ) {
 
     try {
 
+        if (!member) {
+            return false;
+        }
+
         if (!member.kickable) {
 
             console.log(
-                `[KICK FAILED] ${member.user.tag}`
+                `[KICK FAILED] Cannot kick ${member.user.tag}`
             );
 
             return false;
@@ -127,8 +134,8 @@ async function kickMember(
     } catch (error) {
 
         console.error(
-            "Kick error:",
-            error
+            `[KICK ERROR] ${member?.user?.tag || "Unknown user"}:`,
+            error.message
         );
 
         return false;
@@ -144,14 +151,27 @@ async function lockdown(
     reason = "Raid detected"
 ) {
 
+    if (!guild) {
+        return false;
+    }
+
     const state =
         getGuildState(guild.id);
 
+    // Already locked
     if (state.lockdown) {
         return false;
     }
 
     state.lockdown = true;
+
+    console.log(
+        `[LOCKDOWN] ${guild.name}`
+    );
+
+    console.log(
+        `[REASON] ${reason}`
+    );
 
     const everyoneRole =
         guild.roles.everyone;
@@ -163,6 +183,7 @@ async function lockdown(
 
         try {
 
+            // Only lock text-based channels
             if (
                 channel.type ===
                     ChannelType.GuildText ||
@@ -181,22 +202,38 @@ async function lockdown(
                             `Guardian Anti-Raid: ${reason}`
                     }
                 );
-
             }
 
         } catch (error) {
 
             console.error(
-                `Could not lock ${channel.name}:`,
+                `[LOCKDOWN ERROR] ${channel.name}:`,
                 error.message
             );
-
         }
     }
 
+    // ====================================
+    // AUTOMATIC UNLOCK
+    // ====================================
+
     state.lockdownTimer =
         setTimeout(
-            () => unlock(guild),
+            async () => {
+
+                try {
+
+                    await unlock(guild);
+
+                } catch (error) {
+
+                    console.error(
+                        "Automatic unlock error:",
+                        error
+                    );
+                }
+
+            },
             config.lockdownDuration
         );
 
@@ -209,6 +246,10 @@ async function lockdown(
 
 async function unlock(guild) {
 
+    if (!guild) {
+        return false;
+    }
+
     const state =
         getGuildState(guild.id);
 
@@ -218,6 +259,7 @@ async function unlock(guild) {
 
     state.lockdown = false;
 
+    // Stop automatic timer
     if (state.lockdownTimer) {
 
         clearTimeout(
@@ -226,6 +268,10 @@ async function unlock(guild) {
 
         state.lockdownTimer = null;
     }
+
+    console.log(
+        `[UNLOCK] ${guild.name}`
+    );
 
     const everyoneRole =
         guild.roles.everyone;
@@ -255,16 +301,14 @@ async function unlock(guild) {
                             "Guardian Anti-Raid lockdown ended"
                     }
                 );
-
             }
 
         } catch (error) {
 
             console.error(
-                `Could not unlock ${channel.name}:`,
+                `[UNLOCK ERROR] ${channel.name}:`,
                 error.message
             );
-
         }
     }
 
@@ -272,18 +316,19 @@ async function unlock(guild) {
 }
 
 // ========================================
-// LOCKDOWN STATUS
+// CHECK LOCKDOWN STATUS
 // ========================================
 
 function isLockedDown(guildId) {
 
-    return getGuildState(
-        guildId
-    ).lockdown;
+    const state =
+        getGuildState(guildId);
+
+    return state.lockdown;
 }
 
 // ========================================
-// AUTHORIZED USERS
+// AUTHORIZE USER
 // ========================================
 
 function authorizeUser(
@@ -301,6 +346,10 @@ function authorizeUser(
     return true;
 }
 
+// ========================================
+// UNAUTHORIZE USER
+// ========================================
+
 function unauthorizeUser(
     guildId,
     userId
@@ -313,6 +362,10 @@ function unauthorizeUser(
         userId
     );
 }
+
+// ========================================
+// CHECK AUTHORIZATION
+// ========================================
 
 function isAuthorizedUser(
     guildId,
@@ -327,6 +380,10 @@ function isAuthorizedUser(
     );
 }
 
+// ========================================
+// GET AUTHORIZED USERS
+// ========================================
+
 function getAuthorizedUsers(
     guildId
 ) {
@@ -340,7 +397,7 @@ function getAuthorizedUsers(
 }
 
 // ========================================
-// BLOCKED WORDS
+// ADD BLOCKED WORD
 // ========================================
 
 function addBlockedWord(
@@ -348,28 +405,61 @@ function addBlockedWord(
     word
 ) {
 
+    if (
+        !guildId ||
+        !word
+    ) {
+        return false;
+    }
+
     const state =
         getGuildState(guildId);
 
+    const cleanWord =
+        word
+            .trim()
+            .toLowerCase();
+
+    if (!cleanWord) {
+        return false;
+    }
+
     state.blockedWords.add(
-        word.toLowerCase()
+        cleanWord
     );
 
     return true;
 }
+
+// ========================================
+// REMOVE BLOCKED WORD
+// ========================================
 
 function removeBlockedWord(
     guildId,
     word
 ) {
 
+    if (
+        !guildId ||
+        !word
+    ) {
+        return false;
+    }
+
     const state =
         getGuildState(guildId);
 
     return state.blockedWords.delete(
-        word.toLowerCase()
+        word
+            .trim()
+            .toLowerCase()
     );
 }
+
+// ========================================
+// GET BLOCKED WORDS
+// ========================================
 
 function getBlockedWords(
     guildId
@@ -383,10 +473,21 @@ function getBlockedWords(
     ];
 }
 
+// ========================================
+// FIND BLOCKED WORD
+// ========================================
+
 function findBlockedWord(
     guildId,
     message
 ) {
+
+    if (
+        !guildId ||
+        !message
+    ) {
+        return null;
+    }
 
     const state =
         getGuildState(guildId);
@@ -411,7 +512,10 @@ function findBlockedWord(
                 "i"
             );
 
-        if (regex.test(content)) {
+        if (
+            regex.test(content)
+        ) {
+
             return word;
         }
     }
@@ -420,39 +524,94 @@ function findBlockedWord(
 }
 
 // ========================================
-// EXPORT EVERYTHING
+// WHITELIST USER
+// ========================================
+
+function whitelistUser(
+    guildId,
+    userId
+) {
+
+    const state =
+        getGuildState(guildId);
+
+    state.whitelistedUsers.add(
+        userId
+    );
+
+    return true;
+}
+
+// ========================================
+// REMOVE FROM WHITELIST
+// ========================================
+
+function removeWhitelist(
+    guildId,
+    userId
+) {
+
+    const state =
+        getGuildState(guildId);
+
+    return state.whitelistedUsers.delete(
+        userId
+    );
+}
+
+// ========================================
+// GET RECENT JOINS
+// ========================================
+
+function getRecentJoinCount(
+    guildId
+) {
+
+    const state =
+        getGuildState(guildId);
+
+    const now =
+        Date.now();
+
+    state.joins =
+        state.joins.filter(
+            join =>
+                now - join.timestamp <=
+                config.raidTimeWindow * 1000
+        );
+
+    return state.joins.length;
+}
+
+// ========================================
+// EXPORTS
 // ========================================
 
 module.exports = {
 
+    // Raid protection
     recordJoin,
-
     isSuspiciousAccount,
-
     isWhitelisted,
-
     kickMember,
-
     lockdown,
-
     unlock,
-
     isLockedDown,
+    getRecentJoinCount,
 
+    // Whitelist
+    whitelistUser,
+    removeWhitelist,
+
+    // Authorization
     authorizeUser,
-
     unauthorizeUser,
-
     isAuthorizedUser,
-
     getAuthorizedUsers,
 
+    // Blocked words
     addBlockedWord,
-
     removeBlockedWord,
-
     getBlockedWords,
-
     findBlockedWord
-
 };
