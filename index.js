@@ -12,12 +12,10 @@ const database =
     require("./database");
 
 const {
-
     recordJoin,
     isSuspiciousAccount,
     isWhitelisted,
     kickMember,
-
     lockdown,
     unlock,
     isLockedDown,
@@ -25,7 +23,18 @@ const {
     authorizeUser,
     unauthorizeUser,
     isAuthorizedUser,
+    isUnauthorizedUser,
     getAuthorizedUsers,
+    getUnauthorizedUsers,
+
+    authorizeRole,
+    unauthorizeRole,
+    isAuthorizedRole,
+    isUnauthorizedRole,
+    getAuthorizedRoles,
+    getUnauthorizedRoles,
+
+    canUseGuardian,
 
     addBlockedWord,
     removeBlockedWord,
