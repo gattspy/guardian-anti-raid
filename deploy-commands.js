@@ -1,26 +1,16 @@
 require("dotenv").config();
 
 const {
+    Client,
+    GatewayIntentBits,
     REST,
     Routes,
     SlashCommandBuilder
 } = require("discord.js");
 
-const commands = [
-
-    new SlashCommandBuilder()
-        .setName("lockdown")
-        .setDescription("Immediately lock the server during a raid."),
-
-    new SlashCommandBuilder()
-        .setName("unlock")
-        .setDescription("Remove the current server lockdown."),
-
-    new SlashCommandBuilder()
-        .setName("raidstatus")
-        .setDescription("Check the current anti-raid status.")
-
-].map(command => command.toJSON());
+// ========================================
+// CHECK ENV
+// ========================================
 
 if (!process.env.DISCORD_TOKEN) {
     console.error("❌ DISCORD_TOKEN is missing.");
@@ -32,57 +22,119 @@ if (!process.env.CLIENT_ID) {
     process.exit(1);
 }
 
-const rest = new REST({
-    version: "10"
-}).setToken(process.env.DISCORD_TOKEN);
+// ========================================
+// COMMANDS
+// ========================================
 
-async function deployCommands() {
+const commands = [
 
-    try {
+    new SlashCommandBuilder()
+        .setName("lockdown")
+        .setDescription(
+            "Immediately lock the server."
+        ),
 
-        console.log(
-            "🔄 Registering global slash commands..."
-        );
+    new SlashCommandBuilder()
+        .setName("unlock")
+        .setDescription(
+            "Remove the server lockdown."
+        ),
 
-        await rest.put(
-            Routes.applicationCommands(
-                process.env.CLIENT_ID
-            ),
-            {
-                body: commands
-            }
-        );
+    new SlashCommandBuilder()
+        .setName("raidstatus")
+        .setDescription(
+            "Check the current anti-raid status."
+        )
 
-        console.log(
-            "✅ Global slash commands registered!"
-        );
+].map(command => command.toJSON());
 
-        console.log(
-            "Commands:"
-        );
+// ========================================
+// DISCORD CLIENT
+// ========================================
 
-        console.log(
-            "/lockdown"
-        );
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds
+    ]
+});
 
-        console.log(
-            "/unlock"
-        );
+// ========================================
+// LOGIN
+// ========================================
 
-        console.log(
-            "/raidstatus"
-        );
+client.once("ready", async () => {
 
-    } catch (error) {
+    console.log(
+        `✅ Logged in as ${client.user.tag}`
+    );
 
-        console.error(
-            "❌ Failed to register commands:"
-        );
+    console.log(
+        `Found ${client.guilds.cache.size} server(s).`
+    );
 
-        console.error(error);
+    const rest = new REST({
+        version: "10"
+    }).setToken(
+        process.env.DISCORD_TOKEN
+    );
 
-        process.exit(1);
+    // ====================================
+    // REGISTER COMMANDS IN EVERY SERVER
+    // ====================================
+
+    for (
+        const guild of client.guilds.cache.values()
+    ) {
+
+        try {
+
+            console.log(
+                `🔄 Registering commands in: ${guild.name}`
+            );
+
+            await rest.put(
+                Routes.applicationGuildCommands(
+                    process.env.CLIENT_ID,
+                    guild.id
+                ),
+                {
+                    body: commands
+                }
+            );
+
+            console.log(
+                `✅ Commands registered in ${guild.name}`
+            );
+
+        } catch (error) {
+
+            console.error(
+                `❌ Failed in ${guild.name}:`,
+                error
+            );
+        }
     }
-}
 
-deployCommands();
+    console.log(
+        "✅ Command deployment complete."
+    );
+
+    process.exit(0);
+});
+
+// ========================================
+// LOGIN ERROR
+// ========================================
+
+client.on("error", error => {
+
+    console.error(
+        "❌ Discord error:",
+        error
+    );
+
+});
+
+client.login(
+    process.env.DISCORD_TOKEN
+);
