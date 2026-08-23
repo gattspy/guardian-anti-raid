@@ -8,47 +8,49 @@ const {
     SlashCommandBuilder
 } = require("discord.js");
 
+// ========================================
+// ENVIRONMENT CHECK
+// ========================================
+
 if (!process.env.DISCORD_TOKEN) {
-
-    console.error(
-        "❌ DISCORD_TOKEN is missing."
-    );
-
+    console.error("❌ DISCORD_TOKEN is missing from .env");
     process.exit(1);
 }
 
 if (!process.env.CLIENT_ID) {
-
-    console.error(
-        "❌ CLIENT_ID is missing."
-    );
-
+    console.error("❌ CLIENT_ID is missing from .env");
     process.exit(1);
 }
 
 // ========================================
-// COMMANDS
+// SLASH COMMANDS
 // ========================================
 
 const commands = [
 
+    // ====================================
+    // LOCKDOWN
+    // ====================================
+
     new SlashCommandBuilder()
         .setName("lockdown")
-        .setDescription(
-            "Lock the server."
-        ),
+        .setDescription("Lock the server during a raid."),
+
+    // ====================================
+    // UNLOCK
+    // ====================================
 
     new SlashCommandBuilder()
         .setName("unlock")
-        .setDescription(
-            "Unlock the server."
-        ),
+        .setDescription("Remove the server lockdown."),
+
+    // ====================================
+    // RAID STATUS
+    // ====================================
 
     new SlashCommandBuilder()
         .setName("raidstatus")
-        .setDescription(
-            "Check raid status."
-        ),
+        .setDescription("Check the current raid status."),
 
     // ====================================
     // AUTHORIZE
@@ -56,15 +58,11 @@ const commands = [
 
     new SlashCommandBuilder()
         .setName("authorize")
-        .setDescription(
-            "Allow a user to use Guardian."
-        )
+        .setDescription("Allow a user to use Guardian.")
         .addUserOption(option =>
             option
                 .setName("user")
-                .setDescription(
-                    "User to authorize."
-                )
+                .setDescription("User to authorize.")
                 .setRequired(true)
         ),
 
@@ -74,15 +72,11 @@ const commands = [
 
     new SlashCommandBuilder()
         .setName("unauthorize")
-        .setDescription(
-            "Remove a user's Guardian access."
-        )
+        .setDescription("Remove a user's Guardian access.")
         .addUserOption(option =>
             option
                 .setName("user")
-                .setDescription(
-                    "User to unauthorize."
-                )
+                .setDescription("User to unauthorize.")
                 .setRequired(true)
         ),
 
@@ -92,9 +86,7 @@ const commands = [
 
     new SlashCommandBuilder()
         .setName("authorized-list")
-        .setDescription(
-            "Show users authorized to use Guardian."
-        ),
+        .setDescription("Show users authorized to use Guardian."),
 
     // ====================================
     // WORD ADD
@@ -102,15 +94,11 @@ const commands = [
 
     new SlashCommandBuilder()
         .setName("word-add")
-        .setDescription(
-            "Add a blocked word."
-        )
+        .setDescription("Add a word to the blocked-word list.")
         .addStringOption(option =>
             option
                 .setName("word")
-                .setDescription(
-                    "Word to block."
-                )
+                .setDescription("Word to block.")
                 .setRequired(true)
         ),
 
@@ -120,15 +108,11 @@ const commands = [
 
     new SlashCommandBuilder()
         .setName("word-remove")
-        .setDescription(
-            "Remove a blocked word."
-        )
+        .setDescription("Remove a word from the blocked-word list.")
         .addStringOption(option =>
             option
                 .setName("word")
-                .setDescription(
-                    "Word to remove."
-                )
+                .setDescription("Word to remove.")
                 .setRequired(true)
         ),
 
@@ -138,95 +122,91 @@ const commands = [
 
     new SlashCommandBuilder()
         .setName("word-list")
-        .setDescription(
-            "Show blocked words."
-        )
+        .setDescription("Show the blocked-word list.")
 
-].map(
-    command => command.toJSON()
-);
+].map(command => command.toJSON());
 
 // ========================================
 // DISCORD CLIENT
 // ========================================
 
-const client =
-    new Client({
-
-        intents: [
-            GatewayIntentBits.Guilds
-        ]
-
-    });
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds
+    ]
+});
 
 // ========================================
-// READY
+// BOT READY
 // ========================================
 
-client.once(
-    "ready",
-    async () => {
+client.once("ready", async () => {
 
-        console.log(
-            `✅ Logged in as ${client.user.tag}`
-        );
+    console.log("================================");
+    console.log("🛡️ GUARDIAN COMMAND DEPLOYER");
+    console.log("================================");
 
-        console.log(
-            `Found ${client.guilds.cache.size} server(s).`
-        );
+    console.log(
+        `✅ Logged in as ${client.user.tag}`
+    );
 
-        const rest =
-            new REST({
-                version: "10"
-            }).setToken(
-                process.env.DISCORD_TOKEN
+    console.log(
+        `📡 Found ${client.guilds.cache.size} server(s)`
+    );
+
+    const rest = new REST({
+        version: "10"
+    }).setToken(
+        process.env.DISCORD_TOKEN
+    );
+
+    // ====================================
+    // REGISTER COMMANDS
+    // ====================================
+
+    for (const guild of client.guilds.cache.values()) {
+
+        try {
+
+            console.log(
+                `🔄 Registering commands in: ${guild.name}`
             );
 
-        for (
-            const guild of
-            client.guilds.cache.values()
-        ) {
+            await rest.put(
+                Routes.applicationGuildCommands(
+                    process.env.CLIENT_ID,
+                    guild.id
+                ),
+                {
+                    body: commands
+                }
+            );
 
-            try {
+            console.log(
+                `✅ Commands registered in: ${guild.name}`
+            );
 
-                console.log(
-                    `🔄 Registering commands in ${guild.name}`
-                );
+        } catch (error) {
 
-                await rest.put(
+            console.error(
+                `❌ Failed to register commands in ${guild.name}:`,
+                error.message
+            );
 
-                    Routes.applicationGuildCommands(
-                        process.env.CLIENT_ID,
-                        guild.id
-                    ),
-
-                    {
-                        body: commands
-                    }
-
-                );
-
-                console.log(
-                    `✅ Commands registered in ${guild.name}`
-                );
-
-            } catch (error) {
-
-                console.error(
-                    `❌ Could not register commands in ${guild.name}:`,
-                    error
-                );
-
-            }
         }
-
-        console.log(
-            "✅ Command deployment complete."
-        );
-
-        process.exit(0);
     }
-);
+
+    console.log("================================");
+    console.log("✅ COMMAND DEPLOYMENT COMPLETE");
+    console.log("================================");
+
+    client.destroy();
+    process.exit(0);
+});
+
+// ========================================
+// LOGIN
+// ========================================
 
 client.login(
     process.env.DISCORD_TOKEN
