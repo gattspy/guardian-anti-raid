@@ -3,12 +3,11 @@ require("dotenv").config();
 const { Pool } = require("pg");
 
 // ========================================
-// DATABASE CONNECTION
+// DATABASE CONFIGURATION
 // ========================================
 
 if (!process.env.DATABASE_URL) {
     console.error("❌ DATABASE_URL is missing.");
-    process.exit(1);
 }
 
 const pool = new Pool({
@@ -25,85 +24,77 @@ const pool = new Pool({
     connectionTimeoutMillis: 10000
 });
 
+let databaseReady = false;
+
 // ========================================
 // INITIALIZE DATABASE
 // ========================================
 
 async function initDatabase() {
 
-    console.log("🔄 Initializing PostgreSQL database...");
+    if (!process.env.DATABASE_URL) {
+        throw new Error(
+            "DATABASE_URL environment variable is missing."
+        );
+    }
+
+    const client =
+        await pool.connect();
 
     try {
 
-        // ------------------------------------
-        // BLOCKED WORDS
-        // ------------------------------------
+        console.log(
+            "🔄 Creating/checking PostgreSQL tables..."
+        );
 
-        await pool.query(`
+        // ====================================
+        // BLOCKED WORDS TABLE
+        // ====================================
+
+        await client.query(`
             CREATE TABLE IF NOT EXISTS blocked_words (
                 guild_id TEXT NOT NULL,
                 word TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
 
                 PRIMARY KEY (guild_id, word)
             );
         `);
 
-        console.log(
-            "✅ blocked_words table is ready."
-        );
+        // ====================================
+        // AUTHORIZED USERS TABLE
+        // ====================================
 
-        // ------------------------------------
-        // AUTHORIZED USERS
-        // ------------------------------------
-
-        await pool.query(`
+        await client.query(`
             CREATE TABLE IF NOT EXISTS authorized_users (
                 guild_id TEXT NOT NULL,
                 user_id TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
 
                 PRIMARY KEY (guild_id, user_id)
             );
         `);
 
-        console.log(
-            "✅ authorized_users table is ready."
-        );
-
-        // ------------------------------------
-        // WHITELISTED USERS
-        // ------------------------------------
-
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS whitelisted_users (
-                guild_id TEXT NOT NULL,
-                user_id TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-                PRIMARY KEY (guild_id, user_id)
-            );
-        `);
+        databaseReady = true;
 
         console.log(
-            "✅ whitelisted_users table is ready."
+            "✅ PostgreSQL tables are ready."
         );
-
-        console.log(
-            "✅ PostgreSQL database initialization complete."
-        );
-
-        return true;
 
     } catch (error) {
 
+        databaseReady = false;
+
         console.error(
-            "❌ DATABASE INITIALIZATION FAILED"
+            "❌ Failed to initialize PostgreSQL:",
+            error
         );
 
-        console.error(error);
+        throw error;
 
-        return false;
+    } finally {
+
+        client.release();
     }
 }
 
@@ -113,30 +104,37 @@ async function initDatabase() {
 
 async function testDatabase() {
 
-    try {
-
-        const result =
-            await pool.query(
-                "SELECT NOW() AS time"
-            );
-
-        console.log(
-            `✅ Database connection successful: ${result.rows[0].time}`
+    if (!databaseReady) {
+        throw new Error(
+            "Database is not ready."
         );
-
-        return true;
-
-    } catch (error) {
-
-        console.error(
-            "❌ Database connection test failed:"
-        );
-
-        console.error(error);
-
-        return false;
     }
+
+    const result =
+        await pool.query(
+            "SELECT NOW() AS time"
+        );
+
+    console.log(
+        `✅ PostgreSQL connection test successful: ${result.rows[0].time}`
+    );
+
+    return true;
 }
+
+// ========================================
+// DATABASE STATUS
+// ========================================
+
+function isDatabaseReady() {
+    return databaseReady;
+}
+
+// ========================================
+// ================================
+// BLOCKED WORDS
+// ================================
+// ========================================
 
 // ========================================
 // ADD BLOCKED WORD
@@ -146,6 +144,12 @@ async function addBlockedWord(
     guildId,
     word
 ) {
+
+    if (!databaseReady) {
+        throw new Error(
+            "Database is not ready."
+        );
+    }
 
     if (!guildId || !word) {
         return false;
@@ -160,17 +164,21 @@ async function addBlockedWord(
         return false;
     }
 
-    try {
-
+    const result =
         await pool.query(
             `
             INSERT INTO blocked_words
                 (guild_id, word)
+
             VALUES
                 ($1, $2)
+
             ON CONFLICT
                 (guild_id, word)
+
             DO NOTHING
+
+            RETURNING word;
             `,
             [
                 guildId,
@@ -178,22 +186,7 @@ async function addBlockedWord(
             ]
         );
 
-        console.log(
-            `[DATABASE] Added blocked word "${cleanWord}" to guild ${guildId}`
-        );
-
-        return true;
-
-    } catch (error) {
-
-        console.error(
-            "❌ Failed to add blocked word:"
-        );
-
-        console.error(error);
-
-        return false;
-    }
+    return result.rowCount > 0;
 }
 
 // ========================================
@@ -205,6 +198,12 @@ async function removeBlockedWord(
     word
 ) {
 
+    if (!databaseReady) {
+        throw new Error(
+            "Database is not ready."
+        );
+    }
+
     if (!guildId || !word) {
         return false;
     }
@@ -214,33 +213,23 @@ async function removeBlockedWord(
             .trim()
             .toLowerCase();
 
-    try {
+    const result =
+        await pool.query(
+            `
+            DELETE FROM blocked_words
 
-        const result =
-            await pool.query(
-                `
-                DELETE FROM blocked_words
-                WHERE guild_id = $1
-                AND word = $2
-                `,
-                [
-                    guildId,
-                    cleanWord
-                ]
-            );
+            WHERE guild_id = $1
+            AND word = $2
 
-        return result.rowCount > 0;
-
-    } catch (error) {
-
-        console.error(
-            "❌ Failed to remove blocked word:"
+            RETURNING word;
+            `,
+            [
+                guildId,
+                cleanWord
+            ]
         );
 
-        console.error(error);
-
-        return false;
-    }
+    return result.rowCount > 0;
 }
 
 // ========================================
@@ -251,37 +240,33 @@ async function getBlockedWords(
     guildId
 ) {
 
+    if (!databaseReady) {
+        throw new Error(
+            "Database is not ready."
+        );
+    }
+
     if (!guildId) {
         return [];
     }
 
-    try {
+    const result =
+        await pool.query(
+            `
+            SELECT word
 
-        const result =
-            await pool.query(
-                `
-                SELECT word
-                FROM blocked_words
-                WHERE guild_id = $1
-                ORDER BY word ASC
-                `,
-                [guildId]
-            );
+            FROM blocked_words
 
-        return result.rows.map(
-            row => row.word
+            WHERE guild_id = $1
+
+            ORDER BY word ASC;
+            `,
+            [guildId]
         );
 
-    } catch (error) {
-
-        console.error(
-            "❌ Failed to get blocked words:"
-        );
-
-        console.error(error);
-
-        return [];
-    }
+    return result.rows.map(
+        row => row.word
+    );
 }
 
 // ========================================
@@ -293,55 +278,51 @@ async function findBlockedWord(
     message
 ) {
 
+    if (!databaseReady) {
+        throw new Error(
+            "Database is not ready."
+        );
+    }
+
     if (!guildId || !message) {
         return null;
     }
 
-    try {
-
-        const words =
-            await getBlockedWords(
-                guildId
-            );
-
-        const content =
-            message.toLowerCase();
-
-        for (const word of words) {
-
-            const escapedWord =
-                word.replace(
-                    /[.*+?^${}()|[\]\\]/g,
-                    "\\$&"
-                );
-
-            const regex =
-                new RegExp(
-                    `\\b${escapedWord}\\b`,
-                    "i"
-                );
-
-            if (
-                regex.test(content)
-            ) {
-
-                return word;
-            }
-        }
-
-        return null;
-
-    } catch (error) {
-
-        console.error(
-            "❌ Failed to check blocked words:"
+    const words =
+        await getBlockedWords(
+            guildId
         );
 
-        console.error(error);
+    const content =
+        String(message).toLowerCase();
 
-        return null;
+    for (const word of words) {
+
+        const escapedWord =
+            word.replace(
+                /[.*+?^${}()|[\]\\]/g,
+                "\\$&"
+            );
+
+        const regex =
+            new RegExp(
+                `\\b${escapedWord}\\b`,
+                "i"
+            );
+
+        if (regex.test(content)) {
+            return word;
+        }
     }
+
+    return null;
 }
+
+// ========================================
+// ================================
+// AUTHORIZED USERS
+// ================================
+// ========================================
 
 // ========================================
 // AUTHORIZE USER
@@ -352,17 +333,31 @@ async function authorizeUser(
     userId
 ) {
 
-    try {
+    if (!databaseReady) {
+        throw new Error(
+            "Database is not ready."
+        );
+    }
 
+    if (!guildId || !userId) {
+        return false;
+    }
+
+    const result =
         await pool.query(
             `
             INSERT INTO authorized_users
                 (guild_id, user_id)
+
             VALUES
                 ($1, $2)
+
             ON CONFLICT
                 (guild_id, user_id)
+
             DO NOTHING
+
+            RETURNING user_id;
             `,
             [
                 guildId,
@@ -370,18 +365,7 @@ async function authorizeUser(
             ]
         );
 
-        return true;
-
-    } catch (error) {
-
-        console.error(
-            "❌ Failed to authorize user:"
-        );
-
-        console.error(error);
-
-        return false;
-    }
+    return result.rowCount > 0;
 }
 
 // ========================================
@@ -393,37 +377,37 @@ async function unauthorizeUser(
     userId
 ) {
 
-    try {
-
-        const result =
-            await pool.query(
-                `
-                DELETE FROM authorized_users
-                WHERE guild_id = $1
-                AND user_id = $2
-                `,
-                [
-                    guildId,
-                    userId
-                ]
-            );
-
-        return result.rowCount > 0;
-
-    } catch (error) {
-
-        console.error(
-            "❌ Failed to unauthorize user:"
+    if (!databaseReady) {
+        throw new Error(
+            "Database is not ready."
         );
+    }
 
-        console.error(error);
-
+    if (!guildId || !userId) {
         return false;
     }
+
+    const result =
+        await pool.query(
+            `
+            DELETE FROM authorized_users
+
+            WHERE guild_id = $1
+            AND user_id = $2
+
+            RETURNING user_id;
+            `,
+            [
+                guildId,
+                userId
+            ]
+        );
+
+    return result.rowCount > 0;
 }
 
 // ========================================
-// CHECK AUTHORIZED USER
+// CHECK AUTHORIZATION
 // ========================================
 
 async function isAuthorizedUser(
@@ -431,35 +415,33 @@ async function isAuthorizedUser(
     userId
 ) {
 
-    try {
-
-        const result =
-            await pool.query(
-                `
-                SELECT 1
-                FROM authorized_users
-                WHERE guild_id = $1
-                AND user_id = $2
-                LIMIT 1
-                `,
-                [
-                    guildId,
-                    userId
-                ]
-            );
-
-        return result.rowCount > 0;
-
-    } catch (error) {
-
-        console.error(
-            "❌ Failed to check authorized user:"
-        );
-
-        console.error(error);
-
+    if (!databaseReady) {
         return false;
     }
+
+    if (!guildId || !userId) {
+        return false;
+    }
+
+    const result =
+        await pool.query(
+            `
+            SELECT user_id
+
+            FROM authorized_users
+
+            WHERE guild_id = $1
+            AND user_id = $2
+
+            LIMIT 1;
+            `,
+            [
+                guildId,
+                userId
+            ]
+        );
+
+    return result.rowCount > 0;
 }
 
 // ========================================
@@ -470,164 +452,32 @@ async function getAuthorizedUsers(
     guildId
 ) {
 
-    try {
-
-        const result =
-            await pool.query(
-                `
-                SELECT user_id
-                FROM authorized_users
-                WHERE guild_id = $1
-                ORDER BY created_at ASC
-                `,
-                [guildId]
-            );
-
-        return result.rows.map(
-            row => row.user_id
+    if (!databaseReady) {
+        throw new Error(
+            "Database is not ready."
         );
+    }
 
-    } catch (error) {
-
-        console.error(
-            "❌ Failed to get authorized users:"
-        );
-
-        console.error(error);
-
+    if (!guildId) {
         return [];
     }
-}
 
-// ========================================
-// WHITELIST USER
-// ========================================
-
-async function whitelistUser(
-    guildId,
-    userId
-) {
-
-    try {
-
+    const result =
         await pool.query(
             `
-            INSERT INTO whitelisted_users
-                (guild_id, user_id)
-            VALUES
-                ($1, $2)
-            ON CONFLICT
-                (guild_id, user_id)
-            DO NOTHING
+            SELECT user_id
+
+            FROM authorized_users
+
+            WHERE guild_id = $1
+
+            ORDER BY created_at ASC;
             `,
-            [
-                guildId,
-                userId
-            ]
+            [guildId]
         );
 
-        return true;
-
-    } catch (error) {
-
-        console.error(
-            "❌ Failed to whitelist user:"
-        );
-
-        console.error(error);
-
-        return false;
-    }
-}
-
-// ========================================
-// REMOVE WHITELIST
-// ========================================
-
-async function removeWhitelist(
-    guildId,
-    userId
-) {
-
-    try {
-
-        const result =
-            await pool.query(
-                `
-                DELETE FROM whitelisted_users
-                WHERE guild_id = $1
-                AND user_id = $2
-                `,
-                [
-                    guildId,
-                    userId
-                ]
-            );
-
-        return result.rowCount > 0;
-
-    } catch (error) {
-
-        console.error(
-            "❌ Failed to remove whitelist:"
-        );
-
-        console.error(error);
-
-        return false;
-    }
-}
-
-// ========================================
-// CHECK WHITELIST
-// ========================================
-
-async function isWhitelisted(
-    guildId,
-    userId
-) {
-
-    try {
-
-        const result =
-            await pool.query(
-                `
-                SELECT 1
-                FROM whitelisted_users
-                WHERE guild_id = $1
-                AND user_id = $2
-                LIMIT 1
-                `,
-                [
-                    guildId,
-                    userId
-                ]
-            );
-
-        return result.rowCount > 0;
-
-    } catch (error) {
-
-        console.error(
-            "❌ Failed to check whitelist:"
-        );
-
-        console.error(error);
-
-        return false;
-    }
-}
-
-// ========================================
-// CLOSE DATABASE
-// ========================================
-
-async function closeDatabase() {
-
-    await pool.end();
-
-    console.log(
-        "🛑 PostgreSQL connection closed."
+    return result.rows.map(
+        row => row.user_id
     );
 }
 
@@ -641,20 +491,17 @@ module.exports = {
 
     initDatabase,
     testDatabase,
+    isDatabaseReady,
 
+    // Blocked words
     addBlockedWord,
     removeBlockedWord,
     getBlockedWords,
     findBlockedWord,
 
+    // Authorized users
     authorizeUser,
     unauthorizeUser,
     isAuthorizedUser,
-    getAuthorizedUsers,
-
-    whitelistUser,
-    removeWhitelist,
-    isWhitelisted,
-
-    closeDatabase
+    getAuthorizedUsers
 };
