@@ -1,24 +1,3 @@
-const {
-    recordJoin,
-    isSuspiciousAccount,
-    isWhitelisted,
-    kickMember,
-    lockdown,
-    unlock,
-    isLockedDown,
-
-    authorizeUser,
-    unauthorizeUser,
-    isAuthorizedUser,
-    getAuthorizedUsers,
-
-    addBlockedWord,
-    removeBlockedWord,
-    getBlockedWords,
-    findBlockedWord
-
-} = require("./antiRaid");
-
 require("dotenv").config();
 
 const express = require("express");
@@ -36,7 +15,17 @@ const {
     kickMember,
     lockdown,
     unlock,
-    isLockedDown
+    isLockedDown,
+
+    authorizeUser,
+    unauthorizeUser,
+    isAuthorizedUser,
+    getAuthorizedUsers,
+
+    addBlockedWord,
+    removeBlockedWord,
+    getBlockedWords
+
 } = require("./antiRaid");
 
 const config = require("./config");
@@ -46,60 +35,45 @@ const config = require("./config");
 // ========================================
 
 if (!process.env.DISCORD_TOKEN) {
-
-    console.error(
-        "❌ DISCORD_TOKEN is missing."
-    );
-
+    console.error("❌ DISCORD_TOKEN is missing.");
     process.exit(1);
 }
 
 if (!process.env.CLIENT_ID) {
-
-    console.error(
-        "❌ CLIENT_ID is missing."
-    );
-
+    console.error("❌ CLIENT_ID is missing.");
     process.exit(1);
 }
 
 // ========================================
-// EXPRESS / RENDER
+// EXPRESS / RENDER SERVER
 // ========================================
 
 const app = express();
 
-const PORT =
-    process.env.PORT || 10000;
+const PORT = process.env.PORT || 10000;
 
 app.get("/", (req, res) => {
-
     res.status(200).send(
         "🛡️ Guardian Anti-Raid is online."
     );
-
 });
 
 app.get("/health", (req, res) => {
-
     res.status(200).json({
         status: "online",
         bot: client.isReady()
             ? "online"
             : "starting"
     });
-
 });
 
 app.listen(
     PORT,
     "0.0.0.0",
     () => {
-
         console.log(
-            `Web server running on port ${PORT}`
+            `🌐 Web server running on port ${PORT}`
         );
-
     }
 );
 
@@ -108,15 +82,12 @@ app.listen(
 // ========================================
 
 const client = new Client({
-
     intents: [
-
         GatewayIntentBits.Guilds,
-
-        GatewayIntentBits.GuildMembers
-
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
     ]
-
 });
 
 // ========================================
@@ -150,7 +121,6 @@ client.once(
         console.log(
             "New-account protection: 24 hours"
         );
-
     }
 );
 
@@ -179,7 +149,7 @@ client.on(
             }
 
             // ====================================
-            // CHECK ACCOUNT AGE
+            // ACCOUNT AGE CHECK
             // ====================================
 
             const suspicious =
@@ -199,11 +169,10 @@ client.on(
                 if (kicked) {
 
                     console.log(
-                        `[PROTECTION] Kicked ${member.user.tag} because their account is less than 24 hours old.`
+                        `[PROTECTION] Kicked ${member.user.tag} - account under 24 hours old.`
                     );
                 }
 
-                // Do not process this member further.
                 return;
             }
 
@@ -234,7 +203,7 @@ client.on(
             ) {
 
                 console.log(
-                    `[RAID] RAID DETECTED in ${member.guild.name}`
+                    `[RAID] 🚨 RAID DETECTED in ${member.guild.name}`
                 );
 
                 await lockdown(
@@ -269,6 +238,12 @@ client.on(
                             .addFields(
 
                                 {
+                                    name: "Server",
+                                    value:
+                                        member.guild.name
+                                },
+
+                                {
                                     name: "Join Rate",
                                     value:
                                         `${recentJoins} joins / ${config.raidTimeWindow} seconds`
@@ -296,7 +271,6 @@ client.on(
                 "❌ Member join handler error:",
                 error
             );
-
         }
     }
 );
@@ -318,23 +292,177 @@ client.on(
         try {
 
             // ====================================
-            // ADMINISTRATOR CHECK
+            // ADMIN CHECK
+            // ====================================
+
+            const isAdministrator =
+                interaction.memberPermissions?.has(
+                    "Administrator"
+                );
+
+            // ====================================
+            // AUTHORIZED USER CHECK
+            // ====================================
+
+            const isAuthorized =
+                isAuthorizedUser(
+                    interaction.guild.id,
+                    interaction.user.id
+                );
+
+            // ====================================
+            // AUTHORIZE COMMAND
+            // ONLY ADMINS
             // ====================================
 
             if (
-                !interaction.memberPermissions ||
-                !interaction.memberPermissions.has(
-                    "Administrator"
-                )
+                interaction.commandName ===
+                "authorize"
+            ) {
+
+                if (!isAdministrator) {
+
+                    await interaction.reply({
+                        content:
+                            "❌ Only server administrators can authorize users.",
+                        ephemeral: true
+                    });
+
+                    return;
+                }
+
+                const user =
+                    interaction.options.getUser(
+                        "user"
+                    );
+
+                authorizeUser(
+                    interaction.guild.id,
+                    user.id
+                );
+
+                await interaction.reply({
+                    content:
+                        `✅ ${user} is now authorized to use Guardian.`,
+                    ephemeral: true
+                });
+
+                console.log(
+                    `[AUTH] ${user.tag} authorized by ${interaction.user.tag}`
+                );
+
+                return;
+            }
+
+            // ====================================
+            // UNAUTHORIZE COMMAND
+            // ONLY ADMINS
+            // ====================================
+
+            if (
+                interaction.commandName ===
+                "unauthorize"
+            ) {
+
+                if (!isAdministrator) {
+
+                    await interaction.reply({
+                        content:
+                            "❌ Only server administrators can remove authorized users.",
+                        ephemeral: true
+                    });
+
+                    return;
+                }
+
+                const user =
+                    interaction.options.getUser(
+                        "user"
+                    );
+
+                const removed =
+                    unauthorizeUser(
+                        interaction.guild.id,
+                        user.id
+                    );
+
+                await interaction.reply({
+                    content:
+                        removed
+                            ? `✅ ${user} is no longer authorized to use Guardian.`
+                            : `⚠️ ${user} was not authorized.`,
+                    ephemeral: true
+                });
+
+                return;
+            }
+
+            // ====================================
+            // AUTHORIZED LIST
+            // ONLY ADMINS
+            // ====================================
+
+            if (
+                interaction.commandName ===
+                "authorized-list"
+            ) {
+
+                if (!isAdministrator) {
+
+                    await interaction.reply({
+                        content:
+                            "❌ Only server administrators can view the authorized-user list.",
+                        ephemeral: true
+                    });
+
+                    return;
+                }
+
+                const users =
+                    getAuthorizedUsers(
+                        interaction.guild.id
+                    );
+
+                if (users.length === 0) {
+
+                    await interaction.reply({
+                        content:
+                            "📋 No users are currently authorized.",
+                        ephemeral: true
+                    });
+
+                    return;
+                }
+
+                const list =
+                    users
+                        .map(
+                            id => `<@${id}>`
+                        )
+                        .join("\n");
+
+                await interaction.reply({
+                    content:
+                        `🛡️ **Authorized Guardian Users**\n\n${list}`,
+                    ephemeral: true
+                });
+
+                return;
+            }
+
+            // ====================================
+            // ALL OTHER COMMANDS
+            // ====================================
+
+            if (
+                !isAdministrator &&
+                !isAuthorized
             ) {
 
                 await interaction.reply({
-
                     content:
-                        "❌ You need Administrator permission to use this command.",
-
+                        "❌ You are not authorized to use Guardian Anti-Raid.",
                     ephemeral: true
-
                 });
 
                 return;
@@ -396,14 +524,112 @@ client.on(
                     );
 
                 await interaction.reply(
-
                     locked
-
                         ? "🚨 **RAID LOCKDOWN ACTIVE**"
-
                         : "🟢 **NO RAID LOCKDOWN ACTIVE**"
-
                 );
+
+                return;
+            }
+
+            // ====================================
+            // /WORD-ADD
+            // ====================================
+
+            if (
+                interaction.commandName ===
+                "word-add"
+            ) {
+
+                const word =
+                    interaction.options
+                        .getString("word")
+                        .trim()
+                        .toLowerCase();
+
+                addBlockedWord(
+                    interaction.guild.id,
+                    word
+                );
+
+                await interaction.reply({
+                    content:
+                        `✅ **${word}** has been added to the blocked-word list.`,
+                    ephemeral: true
+                });
+
+                return;
+            }
+
+            // ====================================
+            // /WORD-REMOVE
+            // ====================================
+
+            if (
+                interaction.commandName ===
+                "word-remove"
+            ) {
+
+                const word =
+                    interaction.options
+                        .getString("word")
+                        .trim()
+                        .toLowerCase();
+
+                const removed =
+                    removeBlockedWord(
+                        interaction.guild.id,
+                        word
+                    );
+
+                await interaction.reply({
+                    content:
+                        removed
+                            ? `✅ **${word}** has been removed.`
+                            : `⚠️ **${word}** was not found.`,
+                    ephemeral: true
+                });
+
+                return;
+            }
+
+            // ====================================
+            // /WORD-LIST
+            // ====================================
+
+            if (
+                interaction.commandName ===
+                "word-list"
+            ) {
+
+                const words =
+                    getBlockedWords(
+                        interaction.guild.id
+                    );
+
+                if (words.length === 0) {
+
+                    await interaction.reply({
+                        content:
+                            "📋 No blocked words are configured.",
+                        ephemeral: true
+                    });
+
+                    return;
+                }
+
+                await interaction.reply({
+                    content:
+                        `🚨 **Blocked Words**\n\n${
+                            words
+                                .map(
+                                    word =>
+                                        `• ${word}`
+                                )
+                                .join("\n")
+                        }`,
+                    ephemeral: true
+                });
 
                 return;
             }
@@ -421,23 +647,17 @@ client.on(
             ) {
 
                 await interaction.followUp({
-
                     content:
                         "❌ Something went wrong.",
-
                     ephemeral: true
-
                 });
 
             } else {
 
                 await interaction.reply({
-
                     content:
                         "❌ Something went wrong.",
-
                     ephemeral: true
-
                 });
             }
         }
@@ -453,10 +673,9 @@ client.on(
     error => {
 
         console.error(
-            "Discord client error:",
+            "❌ Discord client error:",
             error
         );
-
     }
 );
 
@@ -465,10 +684,9 @@ client.on(
     warning => {
 
         console.warn(
-            "Discord warning:",
+            "⚠️ Discord warning:",
             warning
         );
-
     }
 );
 
@@ -479,32 +697,3 @@ client.on(
 client.login(
     process.env.DISCORD_TOKEN
 );
-
-// ========================================
-// AUTHORIZATION CHECK
-// ========================================
-
-const isAdministrator =
-    interaction.memberPermissions?.has(
-        "Administrator"
-    );
-
-const isAuthorized =
-    isAuthorizedUser(
-        interaction.guild.id,
-        interaction.user.id
-    );
-
-// Server administrators always have access.
-// Otherwise the user must be authorized.
-
-if (!isAdministrator && !isAuthorized) {
-
-    await interaction.reply({
-        content:
-            "❌ You are not authorized to use Guardian Anti-Raid.",
-        ephemeral: true
-    });
-
-    return;
-}
