@@ -1,9 +1,11 @@
 const {
-    ChannelType
+    ChannelType,
+    PermissionFlagsBits
 } = require("discord.js");
 
 const config = require("./config");
-const db = require("./database");
+
+const database = require("./database");
 
 // ========================================
 // SERVER STATE
