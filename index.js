@@ -41,7 +41,7 @@ const {
     removeBlockedWord,
     getBlockedWords,
 
-        setAutoCategoryMessage,
+    setAutoCategoryMessage,
     removeAutoCategoryMessage,
     getAutoCategoryMessage,
     getAutoCategoryMessages,
@@ -59,6 +59,7 @@ const config = require("./config");
 // ========================================
 
 if (!process.env.DISCORD_TOKEN) {
+
     console.error(
         "❌ DISCORD_TOKEN is missing from .env"
     );
@@ -67,6 +68,7 @@ if (!process.env.DISCORD_TOKEN) {
 }
 
 if (!process.env.CLIENT_ID) {
+
     console.error(
         "❌ CLIENT_ID is missing from .env"
     );
@@ -75,6 +77,7 @@ if (!process.env.CLIENT_ID) {
 }
 
 if (!process.env.DATABASE_URL) {
+
     console.error(
         "❌ DATABASE_URL is missing from .env"
     );
@@ -92,7 +95,8 @@ let databaseReady = false;
 // EXPRESS / RENDER
 // ========================================
 
-const app = express();
+const app =
+    express();
 
 const PORT =
     process.env.PORT || 10000;
@@ -101,53 +105,63 @@ const PORT =
 // DISCORD CLIENT
 // ========================================
 
-const client = new Client({
+const client =
+    new Client({
 
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
-    ],
+        intents: [
+            GatewayIntentBits.Guilds,
+            GatewayIntentBits.GuildMembers,
+            GatewayIntentBits.GuildMessages,
+            GatewayIntentBits.MessageContent
+        ],
 
-    partials: [
-        Partials.Channel,
-        Partials.Message
-    ]
-});
+        partials: [
+            Partials.Channel,
+            Partials.Message
+        ]
+
+    });
 
 // ========================================
 // HOME
 // ========================================
 
-app.get("/", (req, res) => {
+app.get(
+    "/",
+    (req, res) => {
 
-    res.status(200).send(
-        "🛡️ Guardian Anti-Raid is online."
-    );
-});
+        res.status(200).send(
+            "🛡️ Guardian Anti-Raid is online."
+        );
+    }
+);
 
 // ========================================
 // HEALTH
 // ========================================
 
-app.get("/health", (req, res) => {
+app.get(
+    "/health",
+    (req, res) => {
 
-    res.status(200).json({
+        res.status(200).json({
 
-        status: "online",
+            status:
+                "online",
 
-        bot:
-            client.isReady()
-                ? "online"
-                : "starting",
+            bot:
+                client.isReady()
+                    ? "online"
+                    : "starting",
 
-        database:
-            databaseReady
-                ? "online"
-                : "offline"
-    });
-});
+            database:
+                databaseReady
+                    ? "online"
+                    : "offline"
+
+        });
+    }
+);
 
 // ========================================
 // EXPRESS START
@@ -353,6 +367,10 @@ client.once(
         console.log(
             "📨 Multi-line category auto-messages: ENABLED"
         );
+
+        console.log(
+            "🔨 Ban-trigger channel protection: ENABLED"
+        );
     }
 );
 
@@ -370,16 +388,20 @@ client.on(
                 `[JOIN] ${member.user.tag} joined ${member.guild.name}`
             );
 
+            // Ignore bots
             if (member.user.bot) {
                 return;
             }
 
+            // Ignore whitelisted members
             if (isWhitelisted(member)) {
                 return;
             }
 
             const suspicious =
-                isSuspiciousAccount(member);
+                isSuspiciousAccount(
+                    member
+                );
 
             // ====================================
             // KICK ACCOUNTS UNDER 24 HOURS
@@ -467,17 +489,23 @@ client.on(
 
                             .addFields(
                                 {
-                                    name: "Server",
+                                    name:
+                                        "Server",
+
                                     value:
                                         member.guild.name
                                 },
                                 {
-                                    name: "Join Rate",
+                                    name:
+                                        "Join Rate",
+
                                     value:
                                         `${recentJoins} joins / ${config.raidTimeWindow} seconds`
                                 },
                                 {
-                                    name: "Action",
+                                    name:
+                                        "Action",
+
                                     value:
                                         "🔒 Server lockdown activated"
                                 }
@@ -488,7 +516,9 @@ client.on(
                     try {
 
                         await logChannel.send({
-                            embeds: [embed]
+                            embeds: [
+                                embed
+                            ]
                         });
 
                     } catch (error) {
@@ -519,14 +549,21 @@ function normalizeForWordFilter(
     text
 ) {
 
-    return String(text || "")
+    return String(
+        text || ""
+    )
 
         // Convert many stylized Unicode fonts
-        // and full-width text to ordinary text.
-        .normalize("NFKC")
+        // and full-width text into regular text.
+        .normalize(
+            "NFKC"
+        )
 
-        // Break accented characters apart.
-        .normalize("NFD")
+        // Break accented letters into
+        // letter + combining mark.
+        .normalize(
+            "NFD"
+        )
 
         // Remove combining marks.
         .replace(
@@ -534,9 +571,11 @@ function normalizeForWordFilter(
             ""
         )
 
-        .normalize("NFC")
+        .normalize(
+            "NFC"
+        )
 
-        // Remove zero-width / invisible characters.
+        // Remove zero-width/invisible characters.
         .replace(
             /[\u200B-\u200D\u2060\uFEFF]/g,
             ""
@@ -553,7 +592,9 @@ function escapeRegExp(
     text
 ) {
 
-    return String(text).replace(
+    return String(
+        text
+    ).replace(
         /[.*+?^${}()|[\]\\]/g,
         "\\$&"
     );
@@ -605,21 +646,21 @@ async function findStandaloneBlockedWord(
             );
 
         /*
-         * Standalone words only.
+         * Standalone word matching only.
          *
          * If "ass" is blocked:
          *
-         * ass             BLOCK
-         * ASS             BLOCK
-         * an ass!         BLOCK
-         * 𝐚𝐬𝐬             BLOCK
-         * 𝕒𝕤𝕤             BLOCK
-         * ａｓｓ            BLOCK
+         * ass          -> BLOCK
+         * ASS          -> BLOCK
+         * an ass!      -> BLOCK
+         * 𝐚𝐬𝐬          -> BLOCK
+         * 𝕒𝕤𝕤          -> BLOCK
+         * ａｓｓ         -> BLOCK
          *
-         * class           ALLOW
-         * grass           ALLOW
-         * glasses         ALLOW
-         * assassin        ALLOW
+         * class        -> ALLOW
+         * grass        -> ALLOW
+         * glasses      -> ALLOW
+         * assassin     -> ALLOW
          */
 
         const regex =
@@ -652,6 +693,10 @@ async function checkBlockedWordMessage(
 
     try {
 
+        // ====================================
+        // BASIC CHECKS
+        // ====================================
+
         if (
             !message ||
             !message.author
@@ -669,10 +714,12 @@ async function checkBlockedWordMessage(
             return;
         }
 
+        // Database must be online
         if (!databaseReady) {
             return;
         }
 
+        // Ignore messages with no text
         if (!message.content) {
             return;
         }
@@ -752,52 +799,60 @@ async function checkBlockedWordMessage(
         }
 
         // ====================================
-        // TIMEOUT
-        // ====================================
+// TIMEOUT LENGTH
+// ====================================
 
-        const timeoutDuration =
-            config.wordTimeoutDuration ||
-            24 * 60 * 60 * 1000;
+const timeoutDuration =
+    config.wordTimeoutDuration ||
+    24 * 60 * 60 * 1000;
 
-        if (!member.moderatable) {
+// ====================================
+// MODERATION CHECK
+// ====================================
 
-            console.warn(
-                `[WORD FILTER] Cannot timeout ${message.author.tag}.`
-            );
+if (!member.moderatable) {
 
-            console.warn(
-                "[WORD FILTER] Guardian needs Moderate Members and its role must be above the user's highest role."
-            );
+    console.warn(
+        `[WORD FILTER] Cannot timeout ${message.author.tag}.`
+    );
 
-            return;
-        }
+    console.warn(
+        "[WORD FILTER] Guardian needs Moderate Members and its role must be above the user's highest role."
+    );
 
-        try {
+    return;
+}
 
-            await member.timeout(
-                timeoutDuration,
-                `Guardian Anti-Raid: used standalone blocked word "${blockedWord}" (${source})`
-            );
+// ====================================
+// TIMEOUT MEMBER
+// ====================================
 
-            console.log(
-                `[WORD FILTER] ⏱️ Timed out ${message.author.tag} for 24 hours.`
-            );
+try {
 
-        } catch (error) {
+    await member.timeout(
+        timeoutDuration,
+        `Guardian Anti-Raid: used standalone blocked word "${blockedWord}" (${source})`
+    );
 
-            console.error(
-                "❌ Could not timeout member:",
-                error.message
-            );
-        }
+    console.log(
+        `[WORD FILTER] ⏱️ Timed out ${message.author.tag} for 24 hours.`
+    );
 
-    } catch (error) {
+} catch (error) {
 
-        console.error(
-            "❌ Blocked-word moderation error:",
-            error
-        );
-    }
+    console.error(
+        "❌ Could not timeout member:",
+        error.message
+    );
+}
+
+} catch (error) {
+
+    console.error(
+        "❌ Blocked-word moderation error:",
+        error
+    );
+}
 }
 
 // ========================================
@@ -811,7 +866,10 @@ client.on(
 
         try {
 
-            if (!message.author) {
+            if (
+                !message ||
+                !message.author
+            ) {
                 return;
             }
 
@@ -838,11 +896,16 @@ client.on(
 
             if (
                 banChannelId &&
-                message.channel.id === banChannelId
+                message.channel.id ===
+                    banChannelId
             ) {
 
                 let member =
                     message.member;
+
+                // ====================================
+                // FETCH MEMBER IF NEEDED
+                // ====================================
 
                 if (!member) {
 
@@ -864,22 +927,42 @@ client.on(
                     }
                 }
 
-                // Protect server owner
+                // ====================================
+                // PROTECT SERVER OWNER
+                // ====================================
+
                 if (
                     member.id ===
                     message.guild.ownerId
                 ) {
+
+                    console.warn(
+                        `[BAN CHANNEL] Server owner ${message.author.tag} triggered the channel. Ignoring.`
+                    );
+
                     return;
                 }
 
-                // Protect administrators
+                // ====================================
+                // PROTECT ADMINISTRATORS
+                // ====================================
+
                 if (
                     member.permissions.has(
                         "Administrator"
                     )
                 ) {
+
+                    console.warn(
+                        `[BAN CHANNEL] Administrator ${message.author.tag} triggered the channel. Ignoring.`
+                    );
+
                     return;
                 }
+
+                // ====================================
+                // CHECK IF MEMBER CAN BE BANNED
+                // ====================================
 
                 if (!member.bannable) {
 
@@ -893,6 +976,11 @@ client.on(
 
                     return;
                 }
+
+                // ====================================
+                // BAN MEMBER
+                // DELETE PREVIOUS 3 HOURS
+                // ====================================
 
                 try {
 
@@ -910,7 +998,7 @@ client.on(
                     );
 
                     console.log(
-                        `[BAN CHANNEL] 🗑️ Deleted up to the previous 3 hours of messages.`
+                        `[BAN CHANNEL] 🗑️ Requested deletion of up to the previous 3 hours of messages.`
                     );
 
                 } catch (error) {
@@ -942,6 +1030,7 @@ client.on(
         }
     }
 );
+
 // ========================================
 // EDITED MESSAGES
 // ========================================
@@ -954,6 +1043,10 @@ client.on(
     ) => {
 
         try {
+
+            // ====================================
+            // FETCH PARTIAL MESSAGE
+            // ====================================
 
             if (newMessage.partial) {
 
@@ -973,6 +1066,7 @@ client.on(
                 }
             }
 
+            // Ignore bots
             if (
                 !newMessage.author ||
                 newMessage.author.bot
@@ -980,10 +1074,12 @@ client.on(
                 return;
             }
 
+            // Ignore DMs
             if (!newMessage.guild) {
                 return;
             }
 
+            // Ignore edits where content did not change
             if (
                 oldMessage?.content ===
                 newMessage.content
@@ -1077,10 +1173,16 @@ client.on(
 
                 if (!admin) {
 
-                    const member =
-                        await interaction.guild.members.fetch(
-                            interaction.user.id
-                        );
+                    let member =
+                        interaction.member;
+
+                    if (!member) {
+
+                        member =
+                            await interaction.guild.members.fetch(
+                                interaction.user.id
+                            );
+                    }
 
                     const allowed =
                         await canUseGuardian(
@@ -1197,7 +1299,11 @@ client.on(
 
                 await interaction.editReply({
                     content:
-                        `✅ **Automatic message saved.**\n\n📁 Category: **${category.name}**\n\nYour line breaks and formatting were saved. Guardian will send this message whenever a new channel is created inside this category.`
+                        `✅ **Automatic message saved.**
+
+📁 Category: **${category.name}**
+
+Your line breaks and formatting were saved. Guardian will send this message whenever a new channel is created inside this category.`
                 });
 
                 console.log(
@@ -1432,16 +1538,15 @@ client.on(
             // ====================================
 
             const adminOnlyCommands = [
-    "authorize",
-    "unauthorize",
-    "authorize-role",
-    "unauthorize-role",
-    "authorized-list",
-    "unauthorized-list",
-    "ban-channel-set",
-    "ban-channel-remove",
-    "ban-channel-status"
-];
+                "authorize",
+                "unauthorize",
+                "authorize-role",
+                "unauthorize-role",
+                "authorized-list",
+                "unauthorized-list",
+                "ban-channel-set",
+                "ban-channel-remove",
+                "ban-channel-status"
             ];
 
             if (
@@ -1741,6 +1846,17 @@ client.on(
                     await canUseGuardian(
                         interaction.member
                     );
+
+                if (!allowed) {
+
+                    await safeReply(
+                        interaction,
+                        "❌ **Access Denied**\n\nYou are not authorized to use Guardian Anti-Raid."
+                    );
+
+                    return;
+                }
+            }
 
                 if (!allowed) {
 
