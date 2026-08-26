@@ -240,8 +240,11 @@ async function lockdown(
             async () => {
 
                 try {
+
                     await unlock(guild);
+
                 } catch (error) {
+
                     console.error(
                         "Automatic unlock error:",
                         error
@@ -369,6 +372,7 @@ async function addBlockedWord(
     guildId,
     word
 ) {
+
     return database.addBlockedWord(
         guildId,
         word
@@ -379,6 +383,7 @@ async function removeBlockedWord(
     guildId,
     word
 ) {
+
     return database.removeBlockedWord(
         guildId,
         word
@@ -388,6 +393,7 @@ async function removeBlockedWord(
 async function getBlockedWords(
     guildId
 ) {
+
     return database.getBlockedWords(
         guildId
     );
@@ -397,6 +403,7 @@ async function findBlockedWord(
     guildId,
     message
 ) {
+
     return database.findBlockedWord(
         guildId,
         message
@@ -411,6 +418,7 @@ async function authorizeUser(
     guildId,
     userId
 ) {
+
     return database.authorizeUser(
         guildId,
         userId
@@ -421,6 +429,7 @@ async function unauthorizeUser(
     guildId,
     userId
 ) {
+
     return database.unauthorizeUser(
         guildId,
         userId
@@ -431,6 +440,7 @@ async function isAuthorizedUser(
     guildId,
     userId
 ) {
+
     return database.isAuthorizedUser(
         guildId,
         userId
@@ -441,6 +451,7 @@ async function isUnauthorizedUser(
     guildId,
     userId
 ) {
+
     return database.isUnauthorizedUser(
         guildId,
         userId
@@ -450,6 +461,7 @@ async function isUnauthorizedUser(
 async function getAuthorizedUsers(
     guildId
 ) {
+
     return database.getAuthorizedUsers(
         guildId
     );
@@ -458,6 +470,7 @@ async function getAuthorizedUsers(
 async function getUnauthorizedUsers(
     guildId
 ) {
+
     return database.getUnauthorizedUsers(
         guildId
     );
@@ -471,6 +484,7 @@ async function authorizeRole(
     guildId,
     roleId
 ) {
+
     return database.authorizeRole(
         guildId,
         roleId
@@ -481,6 +495,7 @@ async function unauthorizeRole(
     guildId,
     roleId
 ) {
+
     return database.unauthorizeRole(
         guildId,
         roleId
@@ -491,6 +506,7 @@ async function isAuthorizedRole(
     guildId,
     roleId
 ) {
+
     return database.isAuthorizedRole(
         guildId,
         roleId
@@ -501,6 +517,7 @@ async function isUnauthorizedRole(
     guildId,
     roleId
 ) {
+
     return database.isUnauthorizedRole(
         guildId,
         roleId
@@ -510,6 +527,7 @@ async function isUnauthorizedRole(
 async function getAuthorizedRoles(
     guildId
 ) {
+
     return database.getAuthorizedRoles(
         guildId
     );
@@ -518,6 +536,7 @@ async function getAuthorizedRoles(
 async function getUnauthorizedRoles(
     guildId
 ) {
+
     return database.getUnauthorizedRoles(
         guildId
     );
@@ -635,49 +654,78 @@ async function canUseGuardian(member) {
 }
 
 // ========================================
-// AUTO CHANNEL MESSAGES
+// AUTO CATEGORY MESSAGES
+// ========================================
+//
+// These match the new PostgreSQL table:
+//
+// auto_category_messages
+//
+// guild_id
+// category_id
+// message
+//
+// A message is assigned to a CATEGORY,
+// not to an individual channel.
+//
 // ========================================
 
-async function setAutoChannelMessage(
+// ========================================
+// SET AUTO CATEGORY MESSAGE
+// ========================================
+
+async function setAutoCategoryMessage(
     guildId,
-    channelName,
+    categoryId,
     message
 ) {
 
-    return database.setAutoChannelMessage(
+    return database.setAutoCategoryMessage(
         guildId,
-        channelName,
+        categoryId,
         message
     );
 }
 
-async function removeAutoChannelMessage(
+// ========================================
+// REMOVE AUTO CATEGORY MESSAGE
+// ========================================
+
+async function removeAutoCategoryMessage(
     guildId,
-    channelName
+    categoryId
 ) {
 
-    return database.removeAutoChannelMessage(
+    return database.removeAutoCategoryMessage(
         guildId,
-        channelName
+        categoryId
     );
 }
 
-async function getAutoChannelMessage(
+// ========================================
+// GET AUTO CATEGORY MESSAGE
+// ========================================
+
+async function getAutoCategoryMessage(
     guildId,
-    channelName
+    categoryId
 ) {
 
-    return database.getAutoChannelMessage(
+    return database.getAutoCategoryMessage(
         guildId,
-        channelName
+        categoryId
     );
 }
 
-async function getAutoChannelMessages(
+// ========================================
+// GET ALL AUTO CATEGORY MESSAGES
+// ========================================
+
+async function getAutoCategoryMessages(
     guildId
 ) {
 
-    return database.getAutoChannelMessages(
+    return database.getAutoCategoryMessages(
         guildId
     );
 }
@@ -688,27 +736,49 @@ async function getAutoChannelMessages(
 
 module.exports = {
 
+    // ====================================
+    // RAID / JOIN PROTECTION
+    // ====================================
+
     recordJoin,
     isSuspiciousAccount,
+
+    // ====================================
+    // WHITELIST
+    // ====================================
 
     isWhitelisted,
     whitelistUser,
     removeWhitelist,
 
+    // ====================================
+    // MODERATION
+    // ====================================
+
     kickMember,
+
+    // ====================================
+    // LOCKDOWN
+    // ====================================
 
     lockdown,
     unlock,
     isLockedDown,
     getRecentJoinCount,
 
-    // Blocked words
+    // ====================================
+    // BLOCKED WORDS
+    // ====================================
+
     addBlockedWord,
     removeBlockedWord,
     getBlockedWords,
     findBlockedWord,
 
-    // Users
+    // ====================================
+    // USER AUTHORIZATION
+    // ====================================
+
     authorizeUser,
     unauthorizeUser,
     isAuthorizedUser,
@@ -716,7 +786,10 @@ module.exports = {
     getAuthorizedUsers,
     getUnauthorizedUsers,
 
-    // Roles
+    // ====================================
+    // ROLE AUTHORIZATION
+    // ====================================
+
     authorizeRole,
     unauthorizeRole,
     isAuthorizedRole,
@@ -724,12 +797,18 @@ module.exports = {
     getAuthorizedRoles,
     getUnauthorizedRoles,
 
-    // Auto messages
-    setAutoChannelMessage,
-    removeAutoChannelMessage,
-    getAutoChannelMessage,
-    getAutoChannelMessages,
+    // ====================================
+    // AUTO CATEGORY MESSAGES
+    // ====================================
 
-    // Access
+    setAutoCategoryMessage,
+    removeAutoCategoryMessage,
+    getAutoCategoryMessage,
+    getAutoCategoryMessages,
+
+    // ====================================
+    // GUARDIAN ACCESS
+    // ====================================
+
     canUseGuardian
 };
