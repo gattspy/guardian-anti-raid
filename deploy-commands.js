@@ -269,10 +269,6 @@ client.once(
             `📡 Found ${client.guilds.cache.size} server(s)`
         );
 
-        console.log(
-            `📋 Preparing ${commands.length} commands`
-        );
-
         const rest =
             new REST({
                 version: "10"
@@ -292,7 +288,7 @@ client.once(
             try {
 
                 console.log(
-                    `🔄 Registering commands in: ${guild.name}`
+                    `🔄 Registering ${commands.length} commands in: ${guild.name}`
                 );
 
                 await rest.put(
@@ -316,7 +312,9 @@ client.once(
                 );
 
                 console.error(error);
+
             }
+
         }
 
         console.log(
@@ -342,7 +340,7 @@ client.once(
 );
 
 // ========================================
-// DISCORD CLIENT ERROR
+// LOGIN ERROR
 // ========================================
 
 client.on(
@@ -372,4 +370,5 @@ client.login(
     console.error(error);
 
     process.exit(1);
+
 });
