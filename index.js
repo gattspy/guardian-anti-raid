@@ -2331,28 +2331,43 @@ client.on(
 
         try {
 
+            // ====================================
+            // BASIC CHECKS
+            // ====================================
+
             if (!channel.guild) {
                 return;
             }
 
             if (!databaseReady) {
+
+                console.warn(
+                    `[AUTO MESSAGE] Database is not ready for #${channel.name}`
+                );
+
                 return;
             }
 
             // ====================================
-            // MESSAGE-CAPABLE CHANNELS ONLY
+            // ONLY TEXT / ANNOUNCEMENT CHANNELS
             // ====================================
 
             if (
-                !channel.isTextBased() ||
+                channel.type !== ChannelType.GuildText &&
+                channel.type !== ChannelType.GuildAnnouncement
+            ) {
+                return;
+            }
+
+            if (
                 typeof channel.send !==
-                    "function"
+                "function"
             ) {
                 return;
             }
 
             // ====================================
-            // GET CATEGORY
+            // GET PARENT CATEGORY
             // ====================================
 
             const categoryId =
@@ -2367,21 +2382,47 @@ client.on(
                 return;
             }
 
-            const category =
+            let category =
                 channel.guild.channels.cache.get(
                     categoryId
                 );
+
+            // Fetch category if not already cached
+            if (!category) {
+
+                try {
+
+                    category =
+                        await channel.guild.channels.fetch(
+                            categoryId
+                        );
+
+                } catch (error) {
+
+                    console.error(
+                        `[AUTO MESSAGE] Could not fetch category for #${channel.name}:`,
+                        error.message
+                    );
+
+                    return;
+                }
+            }
 
             if (
                 !category ||
                 category.type !==
                     ChannelType.GuildCategory
             ) {
+
+                console.warn(
+                    `[AUTO MESSAGE] Parent of #${channel.name} is not a valid category.`
+                );
+
                 return;
             }
 
             // ====================================
-            // GET SAVED MESSAGE
+            // GET SAVED CATEGORY MESSAGE
             // ====================================
 
             const autoMessage =
@@ -2391,44 +2432,85 @@ client.on(
                 );
 
             if (!autoMessage) {
+
+                console.log(
+                    `[AUTO MESSAGE] No automatic message configured for category "${category.name}".`
+                );
+
                 return;
             }
 
             // ====================================
-            // BOT PERMISSIONS
+            // GET GUARDIAN MEMBER
             // ====================================
 
-            const me =
+            let me =
                 channel.guild.members.me;
 
             if (!me) {
-                return;
+
+                try {
+
+                    me =
+                        await channel.guild.members.fetchMe();
+
+                } catch (error) {
+
+                    console.error(
+                        `[AUTO MESSAGE] Could not fetch Guardian member in ${channel.guild.name}:`,
+                        error.message
+                    );
+
+                    return;
+                }
             }
+
+            // ====================================
+            // CHECK PERMISSIONS
+            // ====================================
 
             const permissions =
                 channel.permissionsFor(
                     me
                 );
 
+            if (!permissions) {
+
+                console.warn(
+                    `[AUTO MESSAGE] Could not determine permissions for #${channel.name}.`
+                );
+
+                return;
+            }
+
             if (
-                !permissions ||
                 !permissions.has(
                     "ViewChannel"
-                ) ||
+                )
+            ) {
+
+                console.warn(
+                    `[AUTO MESSAGE] Guardian cannot view #${channel.name}.`
+                );
+
+                return;
+            }
+
+            if (
                 !permissions.has(
                     "SendMessages"
                 )
             ) {
 
                 console.warn(
-                    `[AUTO MESSAGE] Guardian cannot send messages in #${channel.name}`
+                    `[AUTO MESSAGE] Guardian cannot send messages in #${channel.name}.`
                 );
 
                 return;
             }
 
             // ====================================
-            // SEND MESSAGE
+            // SEND MULTI-LINE AUTO MESSAGE
             // ====================================
 
             await channel.send({
@@ -2437,7 +2519,7 @@ client.on(
             });
 
             console.log(
-                `[AUTO MESSAGE] ✅ Sent multi-line message in #${channel.name}`
+                `[AUTO MESSAGE] ✅ Sent automatic message in #${channel.name}`
             );
 
             console.log(
@@ -2481,6 +2563,32 @@ client.on(
 );
 
 // ========================================
+// UNHANDLED NODE ERRORS
+// ========================================
+
+process.on(
+    "unhandledRejection",
+    error => {
+
+        console.error(
+            "❌ Unhandled promise rejection:",
+            error
+        );
+    }
+);
+
+process.on(
+    "uncaughtException",
+    error => {
+
+        console.error(
+            "❌ Uncaught exception:",
+            error
+        );
+    }
+);
+
+// ========================================
 // START BOT
 // ========================================
 
@@ -2500,11 +2608,20 @@ async function startBot() {
             "================================"
         );
 
+        // ====================================
+        // INITIALIZE DATABASE
+        // ====================================
+
         await database.initDatabase();
+
+        // ====================================
+        // TEST DATABASE CONNECTION
+        // ====================================
 
         await database.testDatabase();
 
-        databaseReady = true;
+        databaseReady =
+            true;
 
         console.log(
             "✅ DATABASE READY"
@@ -2535,6 +2652,10 @@ async function startBot() {
         );
 
         console.log(
+            "✅ Ban-trigger channel database ready."
+        );
+
+        console.log(
             "================================"
         );
 
@@ -2546,13 +2667,18 @@ async function startBot() {
             "================================"
         );
 
+        // ====================================
+        // LOGIN TO DISCORD
+        // ====================================
+
         await client.login(
             process.env.DISCORD_TOKEN
         );
 
     } catch (error) {
 
-        databaseReady = false;
+        databaseReady =
+            false;
 
         console.error(
             "================================"
@@ -2563,8 +2689,87 @@ async function startBot() {
         );
 
         console.error(
-            error
+            "================================"
         );
+
+        if (
+            error?.message
+        ) {
+
+            console.error(
+                `❌ Error message: ${error.message}`
+            );
+
+        } else {
+
+            console.error(
+                error
+            );
+        }
+
+        // ====================================
+        // DATABASE HOST ERROR
+        // ====================================
+
+        if (
+            error?.code ===
+            "ENOTFOUND"
+        ) {
+
+            console.error(
+                "❌ PostgreSQL hostname could not be found."
+            );
+
+            console.error(
+                "❌ Check DATABASE_URL in Render."
+            );
+        }
+
+        // ====================================
+        // CONNECTION REFUSED
+        // ====================================
+
+        if (
+            error?.code ===
+            "ECONNREFUSED"
+        ) {
+
+            console.error(
+                "❌ PostgreSQL refused the connection."
+            );
+
+            console.error(
+                "❌ Check that your Render PostgreSQL database is running."
+            );
+        }
+
+        // ====================================
+        // LOGIN / PASSWORD ERROR
+        // ====================================
+
+        if (
+            error?.code ===
+            "28P01"
+        ) {
+
+            console.error(
+                "❌ PostgreSQL username or password is incorrect."
+            );
+        }
+
+        // ====================================
+        // DATABASE DOES NOT EXIST
+        // ====================================
+
+        if (
+            error?.code ===
+            "3D000"
+        ) {
+
+            console.error(
+                "❌ PostgreSQL database name does not exist."
+            );
+        }
 
         console.error(
             "================================"
@@ -2573,5 +2778,15 @@ async function startBot() {
         process.exit(1);
     }
 }
+
+// ========================================
+// START GUARDIAN
+// ========================================
+
+startBot();
+
+// ========================================
+// START GUARDIAN
+// ========================================
 
 startBot();
