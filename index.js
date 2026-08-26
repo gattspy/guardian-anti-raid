@@ -7,7 +7,11 @@ const {
     GatewayIntentBits,
     EmbedBuilder,
     ChannelType,
-    Partials
+    Partials,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle,
+    ActionRowBuilder
 } = require("discord.js");
 
 const database = require("./database");
@@ -106,7 +110,6 @@ const client = new Client({
         Partials.Channel,
         Partials.Message
     ]
-
 });
 
 // ========================================
@@ -118,7 +121,6 @@ app.get("/", (req, res) => {
     res.status(200).send(
         "🛡️ Guardian Anti-Raid is online."
     );
-
 });
 
 // ========================================
@@ -140,9 +142,7 @@ app.get("/health", (req, res) => {
             databaseReady
                 ? "online"
                 : "offline"
-
     });
-
 });
 
 // ========================================
@@ -157,7 +157,6 @@ app.listen(
         console.log(
             `🌐 Web server running on port ${PORT}`
         );
-
     }
 );
 
@@ -348,9 +347,8 @@ client.once(
         );
 
         console.log(
-            "📨 Automatic category messages: ENABLED"
+            "📨 Multi-line category auto-messages: ENABLED"
         );
-
     }
 );
 
@@ -399,14 +397,13 @@ client.on(
                     console.log(
                         `[PROTECTION] Kicked ${member.user.tag}`
                     );
-
                 }
 
                 return;
             }
 
             // ====================================
-            // JOIN RATE
+            // RECORD JOIN
             // ====================================
 
             const recentJoins =
@@ -439,6 +436,10 @@ client.on(
                     member.guild,
                     `${recentJoins} members joined within ${config.raidTimeWindow} seconds`
                 );
+
+                // ====================================
+                // RAID LOG CHANNEL
+                // ====================================
 
                 const logChannel =
                     member.guild.channels.cache.find(
@@ -492,7 +493,6 @@ client.on(
                             "❌ Could not send raid log:",
                             error.message
                         );
-
                     }
                 }
             }
@@ -503,7 +503,6 @@ client.on(
                 "❌ Member join handler error:",
                 error
             );
-
         }
     }
 );
@@ -518,19 +517,22 @@ function normalizeForWordFilter(
 
     return String(text || "")
 
-        // Convert many decorative Unicode fonts
-        // and full-width characters to normal text.
+        // Convert many stylized Unicode fonts
+        // and full-width text to ordinary text.
         .normalize("NFKC")
 
-        // Remove combining marks after normalization.
+        // Break accented characters apart.
         .normalize("NFD")
+
+        // Remove combining marks.
         .replace(
             /\p{M}/gu,
             ""
         )
+
         .normalize("NFC")
 
-        // Remove zero-width/invisible characters.
+        // Remove zero-width / invisible characters.
         .replace(
             /[\u200B-\u200D\u2060\uFEFF]/g,
             ""
@@ -599,13 +601,13 @@ async function findStandaloneBlockedWord(
             );
 
         /*
-         * ONLY standalone matching.
+         * Standalone words only.
          *
          * If "ass" is blocked:
          *
          * ass             BLOCK
          * ASS             BLOCK
-         * "an ass!"       BLOCK
+         * an ass!         BLOCK
          * 𝐚𝐬𝐬             BLOCK
          * 𝕒𝕤𝕤             BLOCK
          * ａｓｓ            BLOCK
@@ -646,10 +648,6 @@ async function checkBlockedWordMessage(
 
     try {
 
-        // ====================================
-        // BASIC CHECKS
-        // ====================================
-
         if (
             !message ||
             !message.author
@@ -657,10 +655,12 @@ async function checkBlockedWordMessage(
             return;
         }
 
+        // Ignore bots
         if (message.author.bot) {
             return;
         }
 
+        // Ignore DMs
         if (!message.guild) {
             return;
         }
@@ -674,7 +674,7 @@ async function checkBlockedWordMessage(
         }
 
         // ====================================
-        // FIND STANDALONE BLOCKED WORD
+        // CHECK CONTENT
         // ====================================
 
         const blockedWord =
@@ -748,16 +748,12 @@ async function checkBlockedWordMessage(
         }
 
         // ====================================
-        // TIMEOUT LENGTH
+        // TIMEOUT
         // ====================================
 
         const timeoutDuration =
             config.wordTimeoutDuration ||
             24 * 60 * 60 * 1000;
-
-        // ====================================
-        // MODERATION PERMISSION CHECK
-        // ====================================
 
         if (!member.moderatable) {
 
@@ -771,10 +767,6 @@ async function checkBlockedWordMessage(
 
             return;
         }
-
-        // ====================================
-        // TIMEOUT
-        // ====================================
 
         try {
 
@@ -801,7 +793,6 @@ async function checkBlockedWordMessage(
             "❌ Blocked-word moderation error:",
             error
         );
-
     }
 }
 
@@ -817,7 +808,6 @@ client.on(
             message,
             "new message"
         );
-
     }
 );
 
@@ -833,10 +823,6 @@ client.on(
     ) => {
 
         try {
-
-            // ====================================
-            // FETCH PARTIAL NEW MESSAGE
-            // ====================================
 
             if (newMessage.partial) {
 
@@ -856,10 +842,6 @@ client.on(
                 }
             }
 
-            // ====================================
-            // IGNORE BOT EDITS
-            // ====================================
-
             if (
                 !newMessage.author ||
                 newMessage.author.bot
@@ -867,17 +849,9 @@ client.on(
                 return;
             }
 
-            // ====================================
-            // IGNORE DMS
-            // ====================================
-
             if (!newMessage.guild) {
                 return;
             }
-
-            // ====================================
-            // IGNORE IF CONTENT DID NOT CHANGE
-            // ====================================
 
             if (
                 oldMessage?.content ===
@@ -901,31 +875,250 @@ client.on(
                 "❌ Edited-message filter error:",
                 error
             );
-
         }
     }
 );
 
 // ========================================
-// SLASH COMMANDS
+// DISCORD INTERACTIONS
 // ========================================
 
 client.on(
     "interactionCreate",
     async interaction => {
 
-        if (
-            !interaction.isChatInputCommand()
-        ) {
+        // ====================================
+        // AUTO MESSAGE MODAL SUBMISSION
+        // ====================================
+
+        if (interaction.isModalSubmit()) {
+
+            if (
+                !interaction.customId.startsWith(
+                    "automessage_modal:"
+                )
+            ) {
+                return;
+            }
+
+            try {
+
+                if (!interaction.guild) {
+
+                    await interaction.reply({
+                        content:
+                            "❌ Guardian auto-messages can only be configured inside a server.",
+                        ephemeral: true
+                    });
+
+                    return;
+                }
+
+                // ====================================
+                // ACKNOWLEDGE MODAL
+                // ====================================
+
+                await interaction.deferReply({
+                    ephemeral: true
+                });
+
+                if (!databaseReady) {
+
+                    await interaction.editReply({
+                        content:
+                            "❌ PostgreSQL is not ready."
+                    });
+
+                    return;
+                }
+
+                const guildId =
+                    interaction.guild.id;
+
+                const admin =
+                    interaction.memberPermissions?.has(
+                        "Administrator"
+                    ) === true;
+
+                // ====================================
+                // ACCESS CHECK
+                // ====================================
+
+                if (!admin) {
+
+                    const member =
+                        await interaction.guild.members.fetch(
+                            interaction.user.id
+                        );
+
+                    const allowed =
+                        await canUseGuardian(
+                            member
+                        );
+
+                    if (!allowed) {
+
+                        await interaction.editReply({
+                            content:
+                                "❌ **Access Denied**\n\nYou are not authorized to use Guardian Anti-Raid."
+                        });
+
+                        return;
+                    }
+                }
+
+                // ====================================
+                // GET CATEGORY ID
+                // ====================================
+
+                const categoryId =
+                    interaction.customId.substring(
+                        "automessage_modal:".length
+                    );
+
+                if (!categoryId) {
+
+                    await interaction.editReply({
+                        content:
+                            "❌ Category information was missing."
+                    });
+
+                    return;
+                }
+
+                // ====================================
+                // GET MULTI-LINE MESSAGE
+                // ====================================
+
+                const autoMessage =
+                    interaction.fields
+                        .getTextInputValue(
+                            "automessage_text"
+                        )
+                        .trim();
+
+                if (!autoMessage) {
+
+                    await interaction.editReply({
+                        content:
+                            "❌ The automatic message cannot be empty."
+                    });
+
+                    return;
+                }
+
+                if (
+                    autoMessage.length >
+                    2000
+                ) {
+
+                    await interaction.editReply({
+                        content:
+                            "❌ Automatic messages cannot be longer than 2000 characters."
+                    });
+
+                    return;
+                }
+
+                // ====================================
+                // VERIFY CATEGORY
+                // ====================================
+
+                const category =
+                    interaction.guild.channels.cache.get(
+                        categoryId
+                    );
+
+                if (
+                    !category ||
+                    category.type !==
+                        ChannelType.GuildCategory
+                ) {
+
+                    await interaction.editReply({
+                        content:
+                            "❌ That category could not be found."
+                    });
+
+                    return;
+                }
+
+                // ====================================
+                // SAVE TO DATABASE
+                // ====================================
+
+                const saved =
+                    await setAutoCategoryMessage(
+                        guildId,
+                        categoryId,
+                        autoMessage
+                    );
+
+                if (!saved) {
+
+                    await interaction.editReply({
+                        content:
+                            "❌ Could not save the automatic message."
+                    });
+
+                    return;
+                }
+
+                await interaction.editReply({
+                    content:
+                        `✅ **Automatic message saved.**\n\n📁 Category: **${category.name}**\n\nYour line breaks and formatting were saved. Guardian will send this message whenever a new channel is created inside this category.`
+                });
+
+                console.log(
+                    `[AUTO MESSAGE] ✅ Saved multi-line message for "${category.name}"`
+                );
+
+            } catch (error) {
+
+                console.error(
+                    "❌ Auto-message modal error:",
+                    error
+                );
+
+                try {
+
+                    if (interaction.deferred) {
+
+                        await interaction.editReply({
+                            content:
+                                "❌ Something went wrong while saving the automatic message."
+                        });
+
+                    } else if (
+                        !interaction.replied
+                    ) {
+
+                        await interaction.reply({
+                            content:
+                                "❌ Something went wrong while saving the automatic message.",
+                            ephemeral: true
+                        });
+                    }
+
+                } catch (replyError) {
+
+                    console.error(
+                        "❌ Could not respond to modal:",
+                        replyError
+                    );
+                }
+            }
+
             return;
         }
 
-        const deferred =
-            await deferInteraction(
-                interaction
-            );
+        // ====================================
+        // ONLY SLASH COMMANDS
+        // ====================================
 
-        if (!deferred) {
+        if (
+            !interaction.isChatInputCommand()
+        ) {
             return;
         }
 
@@ -937,10 +1130,11 @@ client.on(
 
             if (!interaction.guild) {
 
-                await safeReply(
-                    interaction,
-                    "❌ Guardian commands can only be used inside a server."
-                );
+                await interaction.reply({
+                    content:
+                        "❌ Guardian commands can only be used inside a server.",
+                    ephemeral: true
+                });
 
                 return;
             }
@@ -962,16 +1156,148 @@ client.on(
 
             if (!databaseReady) {
 
-                await safeReply(
-                    interaction,
-                    "❌ PostgreSQL is not ready."
+                await interaction.reply({
+                    content:
+                        "❌ PostgreSQL is not ready.",
+                    ephemeral: true
+                });
+
+                return;
+            }
+
+            // ====================================
+            // /AUTOMESSAGE-SET
+            // MUST HAPPEN BEFORE deferReply()
+            // ====================================
+
+            if (
+                command ===
+                "automessage-set"
+            ) {
+
+                // ====================================
+                // ACCESS CHECK
+                // ====================================
+
+                if (!admin) {
+
+                    const allowed =
+                        await canUseGuardian(
+                            interaction.member
+                        );
+
+                    if (!allowed) {
+
+                        await interaction.reply({
+                            content:
+                                "❌ **Access Denied**\n\nYou are not authorized to use Guardian Anti-Raid.",
+                            ephemeral: true
+                        });
+
+                        return;
+                    }
+                }
+
+                // ====================================
+                // CATEGORY
+                // ====================================
+
+                const category =
+                    interaction.options.getChannel(
+                        "category"
+                    );
+
+                if (
+                    !category ||
+                    category.type !==
+                        ChannelType.GuildCategory
+                ) {
+
+                    await interaction.reply({
+                        content:
+                            "❌ Please select a valid Discord category.",
+                        ephemeral: true
+                    });
+
+                    return;
+                }
+
+                // ====================================
+                // MULTI-LINE TEXT INPUT
+                // ====================================
+
+                const messageInput =
+                    new TextInputBuilder()
+
+                        .setCustomId(
+                            "automessage_text"
+                        )
+
+                        .setLabel(
+                            "Automatic message"
+                        )
+
+                        .setStyle(
+                            TextInputStyle.Paragraph
+                        )
+
+                        .setPlaceholder(
+                            "Type your message here. Press Enter to create new lines."
+                        )
+
+                        .setMinLength(1)
+
+                        .setMaxLength(2000)
+
+                        .setRequired(true);
+
+                const row =
+                    new ActionRowBuilder()
+                        .addComponents(
+                            messageInput
+                        );
+
+                // ====================================
+                // MODAL
+                // ====================================
+
+                const modal =
+                    new ModalBuilder()
+
+                        .setCustomId(
+                            `automessage_modal:${category.id}`
+                        )
+
+                        .setTitle(
+                            "Automatic Channel Message"
+                        )
+
+                        .addComponents(
+                            row
+                        );
+
+                await interaction.showModal(
+                    modal
                 );
 
                 return;
             }
 
             // ====================================
-            // ADMIN-ONLY MANAGEMENT COMMANDS
+            // DEFER ALL OTHER COMMANDS
+            // ====================================
+
+            const deferred =
+                await deferInteraction(
+                    interaction
+                );
+
+            if (!deferred) {
+                return;
+            }
+
+            // ====================================
+            // ADMIN-ONLY COMMANDS
             // ====================================
 
             const adminOnlyCommands = [
@@ -1293,80 +1619,6 @@ client.on(
             }
 
             // ====================================
-            // /AUTOMESSAGE-SET
-            // ====================================
-
-            if (
-                command ===
-                "automessage-set"
-            ) {
-
-                const category =
-                    interaction.options.getChannel(
-                        "category"
-                    );
-
-                const message =
-                    interaction.options.getString(
-                        "message"
-                    )?.trim();
-
-                if (
-                    !category ||
-                    category.type !==
-                        ChannelType.GuildCategory
-                ) {
-
-                    await safeReply(
-                        interaction,
-                        "❌ Please select a valid Discord category."
-                    );
-
-                    return;
-                }
-
-                if (!message) {
-
-                    await safeReply(
-                        interaction,
-                        "❌ Please provide a message."
-                    );
-
-                    return;
-                }
-
-                if (
-                    message.length >
-                    2000
-                ) {
-
-                    await safeReply(
-                        interaction,
-                        "❌ Automatic messages cannot be longer than 2000 characters."
-                    );
-
-                    return;
-                }
-
-                const result =
-                    await setAutoCategoryMessage(
-                        guildId,
-                        category.id,
-                        message
-                    );
-
-                await safeReply(
-                    interaction,
-
-                    result
-                        ? `✅ **Automatic message configured.**\n\n📁 Category: **${category.name}**\n💬 ${message}`
-                        : "❌ Could not save the automatic category message."
-                );
-
-                return;
-            }
-
-            // ====================================
             // /AUTOMESSAGE-REMOVE
             // ====================================
 
@@ -1459,7 +1711,7 @@ client.on(
                         `📁 **${categoryName}**\n`;
 
                     output +=
-                        `💬 ${item.message}\n\n`;
+                        `💬 Message:\n${item.message}\n\n`;
                 }
 
                 if (
@@ -1680,7 +1932,6 @@ client.on(
 
                 await safeReply(
                     interaction,
-
                     `🚫 **PERMANENT BLOCKED WORDS**\n\n${list}`
                 );
 
@@ -1699,7 +1950,7 @@ client.on(
         } catch (error) {
 
             console.error(
-                "❌ Command error:",
+                "❌ Interaction command error:",
                 error
             );
 
@@ -1707,7 +1958,6 @@ client.on(
                 interaction,
                 "❌ Something went wrong while processing that command."
             );
-
         }
     }
 );
@@ -1731,7 +1981,7 @@ client.on(
             }
 
             // ====================================
-            // ONLY MESSAGE-CAPABLE CHANNELS
+            // MESSAGE-CAPABLE CHANNELS ONLY
             // ====================================
 
             if (
@@ -1768,12 +2018,11 @@ client.on(
                 category.type !==
                     ChannelType.GuildCategory
             ) {
-
                 return;
             }
 
             // ====================================
-            // GET CONFIGURED MESSAGE
+            // GET SAVED MESSAGE
             // ====================================
 
             const autoMessage =
@@ -1787,7 +2036,7 @@ client.on(
             }
 
             // ====================================
-            // PERMISSION CHECK
+            // BOT PERMISSIONS
             // ====================================
 
             const me =
@@ -1820,7 +2069,7 @@ client.on(
             }
 
             // ====================================
-            // SEND AUTO MESSAGE
+            // SEND MESSAGE
             // ====================================
 
             await channel.send({
@@ -1829,7 +2078,7 @@ client.on(
             });
 
             console.log(
-                `[AUTO MESSAGE] ✅ Sent message in #${channel.name}`
+                `[AUTO MESSAGE] ✅ Sent multi-line message in #${channel.name}`
             );
 
             console.log(
@@ -1842,7 +2091,6 @@ client.on(
                 "❌ Auto category message error:",
                 error
             );
-
         }
     }
 );
@@ -1859,7 +2107,6 @@ client.on(
             "❌ Discord client error:",
             error
         );
-
     }
 );
 
@@ -1871,7 +2118,6 @@ client.on(
             "⚠️ Discord warning:",
             warning
         );
-
     }
 );
 
@@ -1926,7 +2172,7 @@ async function startBot() {
         );
 
         console.log(
-            "✅ Auto-category message database ready."
+            "✅ Multi-line auto-category messages ready."
         );
 
         console.log(
