@@ -8,7 +8,8 @@ const {
     EmbedBuilder
 } = require("discord.js");
 
-const database = require("./database");
+const database =
+    require("./database");
 
 const {
     recordJoin,
@@ -38,13 +39,20 @@ const {
     addBlockedWord,
     removeBlockedWord,
     getBlockedWords,
-    findBlockedWord
+    findBlockedWord,
+
+    setAutoChannelMessage,
+    removeAutoChannelMessage,
+    getAutoChannelMessages,
+    getAutoChannelMessage
+
 } = require("./antiRaid");
 
-const config = require("./config");
+const config =
+    require("./config");
 
 // ========================================
-// ENVIRONMENT CHECK
+// ENVIRONMENT
 // ========================================
 
 if (!process.env.DISCORD_TOKEN) {
@@ -69,115 +77,91 @@ if (!process.env.DATABASE_URL) {
 let databaseReady = false;
 
 // ========================================
-// EXPRESS / RENDER
+// EXPRESS
 // ========================================
 
-const app = express();
-const PORT = process.env.PORT || 10000;
+const app =
+    express();
 
-// ========================================
-// HOME
-// ========================================
-
-app.get("/", (req, res) => {
-    res.status(200).send(
-        "🛡️ Guardian Anti-Raid is online."
-    );
-});
-
-// ========================================
-// HEALTH
-// ========================================
-
-app.get("/health", (req, res) => {
-    res.status(200).json({
-        status: "online",
-        bot: client.isReady() ? "online" : "starting",
-        database: databaseReady ? "online" : "offline"
-    });
-});
+const PORT =
+    process.env.PORT || 10000;
 
 // ========================================
 // DISCORD CLIENT
 // ========================================
 
-const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
-    ]
-});
+const client =
+    new Client({
+
+        intents: [
+
+            GatewayIntentBits.Guilds,
+
+            GatewayIntentBits.GuildMembers,
+
+            GatewayIntentBits.GuildMessages,
+
+            GatewayIntentBits.MessageContent
+
+        ]
+
+    });
 
 // ========================================
-// EXPRESS START
+// WEB SERVER
 // ========================================
 
-app.listen(PORT, "0.0.0.0", () => {
-    console.log(
-        `🌐 Web server running on port ${PORT}`
-    );
-});
+app.get(
+    "/",
+    (req, res) => {
 
-// ========================================
-// SAFE INTERACTION RESPONSE
-// ========================================
-
-async function safeReply(interaction, content) {
-    try {
-        if (!interaction || !interaction.isRepliable()) {
-            return;
-        }
-
-        if (interaction.replied) {
-            await interaction.followUp({
-                content,
-                ephemeral: true
-            });
-
-            return;
-        }
-
-        if (interaction.deferred) {
-            await interaction.editReply({
-                content
-            });
-
-            return;
-        }
-
-        await interaction.reply({
-            content,
-            ephemeral: true
-        });
-
-    } catch (error) {
-
-        if (
-            error.code === 10062 ||
-            error.code === 40060 ||
-            error.code === 10015
-        ) {
-            console.warn(
-                `⚠️ Discord interaction could not be responded to (${error.code}).`
-            );
-
-            return;
-        }
-
-        console.error(
-            "❌ Interaction response error:",
-            error
+        res.status(200).send(
+            "🛡️ Guardian Anti-Raid is online."
         );
     }
-}
+);
+
+app.get(
+    "/health",
+    (req, res) => {
+
+        res.status(200).json({
+
+            status: "online",
+
+            bot:
+                client.isReady()
+                    ? "online"
+                    : "starting",
+
+            database:
+                databaseReady
+                    ? "online"
+                    : "offline"
+
+        });
+    }
+);
+
+app.listen(
+    PORT,
+    "0.0.0.0",
+    () => {
+
+        console.log(
+            `🌐 Web server running on port ${PORT}`
+        );
+    }
+);
 
 // ========================================
-// DEFER INTERACTION
+// SAFE INTERACTION ACKNOWLEDGEMENT
 // ========================================
 
-async function deferInteraction(interaction) {
+async function acknowledgeInteraction(
+    interaction
+) {
+
     try {
 
         if (
@@ -202,8 +186,87 @@ async function deferInteraction(interaction) {
 
     } catch (error) {
 
+        if (
+            error.code === 10062 ||
+            error.code === 40060
+        ) {
+            console.warn(
+                `⚠️ Interaction acknowledgement failed: ${error.code}`
+            );
+
+            return false;
+        }
+
         console.error(
-            "❌ Could not defer interaction:",
+            "❌ Interaction acknowledgement error:",
+            error
+        );
+
+        return false;
+    }
+}
+
+// ========================================
+// SAFE RESPONSE
+// ========================================
+
+async function safeReply(
+    interaction,
+    content
+) {
+
+    try {
+
+        if (
+            !interaction ||
+            !interaction.isRepliable()
+        ) {
+            return false;
+        }
+
+        if (interaction.deferred) {
+
+            await interaction.editReply({
+                content
+            });
+
+            return true;
+        }
+
+        if (interaction.replied) {
+
+            await interaction.followUp({
+                content,
+                ephemeral: true
+            });
+
+            return true;
+        }
+
+        await interaction.reply({
+            content,
+            ephemeral: true
+        });
+
+        return true;
+
+    } catch (error) {
+
+        if (
+            error.code === 10062 ||
+            error.code === 40060 ||
+            error.code === 10015
+        ) {
+
+            console.warn(
+                `⚠️ Interaction response unavailable: ${error.code}`
+            );
+
+            return false;
+        }
+
+        console.error(
+            "❌ Interaction response error:",
             error
         );
 
@@ -215,7 +278,10 @@ async function deferInteraction(interaction) {
 // ADMIN CHECK
 // ========================================
 
-function isAdministrator(interaction) {
+function isAdministrator(
+    interaction
+) {
+
     return (
         interaction.memberPermissions?.has(
             "Administrator"
@@ -224,33 +290,40 @@ function isAdministrator(interaction) {
 }
 
 // ========================================
-// BOT READY
+// READY
 // ========================================
 
-client.once("ready", async () => {
+client.once(
+    "ready",
+    () => {
 
-    console.log("================================");
-    console.log("🛡️ GUARDIAN ANTI-RAID ONLINE");
-    console.log("================================");
+        console.log(
+            "================================"
+        );
 
-    console.log(
-        `Logged in as ${client.user.tag}`
-    );
+        console.log(
+            "🛡️ GUARDIAN ANTI-RAID ONLINE"
+        );
 
-    console.log(
-        `Monitoring ${client.guilds.cache.size} server(s)`
-    );
+        console.log(
+            "================================"
+        );
 
-    console.log(
-        "New-account protection: 24 hours"
-    );
+        console.log(
+            `Logged in as ${client.user.tag}`
+        );
 
-    console.log(
-        databaseReady
-            ? "🗄️ PostgreSQL: READY"
-            : "❌ PostgreSQL: NOT READY"
-    );
-});
+        console.log(
+            `Monitoring ${client.guilds.cache.size} server(s)`
+        );
+
+        console.log(
+            databaseReady
+                ? "🗄️ PostgreSQL: READY"
+                : "❌ PostgreSQL: NOT READY"
+        );
+    }
+);
 
 // ========================================
 // MEMBER JOIN
@@ -282,17 +355,10 @@ client.on(
                 config.kickNewAccounts
             ) {
 
-                const kicked =
-                    await kickMember(
-                        member,
-                        "Guardian Anti-Raid: account is less than 24 hours old."
-                    );
-
-                if (kicked) {
-                    console.log(
-                        `[PROTECTION] Kicked ${member.user.tag}`
-                    );
-                }
+                await kickMember(
+                    member,
+                    "Guardian Anti-Raid: account is less than 24 hours old."
+                );
 
                 return;
             }
@@ -310,7 +376,9 @@ client.on(
             if (
                 recentJoins >=
                     config.raidJoinThreshold &&
-                !isLockedDown(member.guild.id)
+                !isLockedDown(
+                    member.guild.id
+                )
             ) {
 
                 console.log(
@@ -325,48 +393,56 @@ client.on(
                 const logChannel =
                     member.guild.channels.cache.find(
                         channel =>
-                            channel.name === "raid-logs"
+                            channel.name ===
+                            "raid-logs"
                     );
 
                 if (logChannel) {
 
                     const embed =
                         new EmbedBuilder()
-                            .setTitle("🚨 RAID DETECTED")
+
+                            .setTitle(
+                                "🚨 RAID DETECTED"
+                            )
+
                             .setDescription(
                                 "Guardian Anti-Raid detected a rapid increase in members."
                             )
+
                             .addFields(
+
                                 {
                                     name: "Server",
-                                    value: member.guild.name
+                                    value:
+                                        member.guild.name
                                 },
+
                                 {
                                     name: "Join Rate",
                                     value:
                                         `${recentJoins} joins / ${config.raidTimeWindow} seconds`
                                 },
+
                                 {
                                     name: "Action",
                                     value:
                                         "🔒 Server lockdown activated"
                                 }
+
                             )
+
                             .setTimestamp();
 
-                    try {
-
-                        await logChannel.send({
-                            embeds: [embed]
-                        });
-
-                    } catch (error) {
-
-                        console.error(
-                            "❌ Could not send raid log:",
-                            error.message
-                        );
-                    }
+                    await logChannel.send({
+                        embeds: [embed]
+                    }).catch(
+                        error =>
+                            console.error(
+                                "❌ Could not send raid log:",
+                                error.message
+                            )
+                    );
                 }
             }
 
@@ -418,17 +494,14 @@ client.on(
 
             if (message.deletable) {
 
-                try {
-
-                    await message.delete();
-
-                } catch (error) {
-
-                    console.error(
-                        "❌ Could not delete blocked-word message:",
-                        error.message
+                await message.delete()
+                    .catch(
+                        error =>
+                            console.error(
+                                "❌ Could not delete blocked message:",
+                                error.message
+                            )
                     );
-                }
             }
 
             const member =
@@ -443,37 +516,24 @@ client.on(
                 24 * 60 * 60 * 1000;
 
             if (!member.moderatable) {
-
-                console.warn(
-                    `[WORD FILTER] Cannot timeout ${message.author.tag}`
-                );
-
                 return;
             }
 
-            try {
-
-                await member.timeout(
-                    timeoutDuration,
-                    `Guardian Anti-Raid: used blocked word "${blockedWord}"`
-                );
-
-                console.log(
-                    `[WORD FILTER] Timed out ${message.author.tag}`
-                );
-
-            } catch (error) {
-
-                console.error(
-                    "❌ Could not timeout member:",
-                    error.message
-                );
-            }
+            await member.timeout(
+                timeoutDuration,
+                `Guardian Anti-Raid: blocked word "${blockedWord}"`
+            ).catch(
+                error =>
+                    console.error(
+                        "❌ Could not timeout member:",
+                        error.message
+                    )
+            );
 
         } catch (error) {
 
             console.error(
-                "❌ Banned word filter error:",
+                "❌ Blocked-word filter error:",
                 error
             );
         }
@@ -488,25 +548,29 @@ client.on(
     "interactionCreate",
     async interaction => {
 
-        if (!interaction.isChatInputCommand()) {
+        if (
+            !interaction.isChatInputCommand()
+        ) {
             return;
         }
 
         // ====================================
-        // IMMEDIATELY ACKNOWLEDGE DISCORD
+        // ACKNOWLEDGE IMMEDIATELY
         // ====================================
 
-        const deferred =
-            await deferInteraction(interaction);
+        const acknowledged =
+            await acknowledgeInteraction(
+                interaction
+            );
 
-        if (!deferred) {
+        if (!acknowledged) {
             return;
         }
 
         try {
 
             // ====================================
-            // SERVER CHECK
+            // SERVER ONLY
             // ====================================
 
             if (!interaction.guild) {
@@ -526,16 +590,19 @@ client.on(
                 interaction.user.id;
 
             const admin =
-                isAdministrator(interaction);
+                isAdministrator(
+                    interaction
+                );
+
+            const command =
+                interaction.commandName;
 
             // ====================================
-            // ADMIN MANAGEMENT COMMANDS
+            // ADMIN AUTHORIZATION COMMANDS
             // ====================================
-
-            // /authorize
 
             if (
-                interaction.commandName ===
+                command ===
                 "authorize"
             ) {
 
@@ -550,7 +617,9 @@ client.on(
                 }
 
                 const user =
-                    interaction.options.getUser("user");
+                    interaction.options.getUser(
+                        "user"
+                    );
 
                 if (!user) {
 
@@ -578,10 +647,12 @@ client.on(
                 return;
             }
 
-            // /unauthorize
+            // ====================================
+            // UNAUTHORIZE USER
+            // ====================================
 
             if (
-                interaction.commandName ===
+                command ===
                 "unauthorize"
             ) {
 
@@ -596,7 +667,9 @@ client.on(
                 }
 
                 const user =
-                    interaction.options.getUser("user");
+                    interaction.options.getUser(
+                        "user"
+                    );
 
                 if (!user) {
 
@@ -617,17 +690,19 @@ client.on(
                 await safeReply(
                     interaction,
                     result
-                        ? `🚫 ${user} is now explicitly unauthorized.`
+                        ? `🚫 ${user} is now unauthorized.`
                         : `⚠️ ${user} was already unauthorized.`
                 );
 
                 return;
             }
 
-            // /authorize-role
+            // ====================================
+            // AUTHORIZE ROLE
+            // ====================================
 
             if (
-                interaction.commandName ===
+                command ===
                 "authorize-role"
             ) {
 
@@ -642,7 +717,9 @@ client.on(
                 }
 
                 const role =
-                    interaction.options.getRole("role");
+                    interaction.options.getRole(
+                        "role"
+                    );
 
                 if (!role) {
 
@@ -670,10 +747,12 @@ client.on(
                 return;
             }
 
-            // /unauthorize-role
+            // ====================================
+            // UNAUTHORIZE ROLE
+            // ====================================
 
             if (
-                interaction.commandName ===
+                command ===
                 "unauthorize-role"
             ) {
 
@@ -688,7 +767,9 @@ client.on(
                 }
 
                 const role =
-                    interaction.options.getRole("role");
+                    interaction.options.getRole(
+                        "role"
+                    );
 
                 if (!role) {
 
@@ -709,17 +790,19 @@ client.on(
                 await safeReply(
                     interaction,
                     result
-                        ? `🚫 ${role} is now explicitly unauthorized.`
+                        ? `🚫 ${role} is now unauthorized.`
                         : `⚠️ ${role} was already unauthorized.`
                 );
 
                 return;
             }
 
-            // /authorized-list
+            // ====================================
+            // AUTHORIZED LIST
+            // ====================================
 
             if (
-                interaction.commandName ===
+                command ===
                 "authorized-list"
             ) {
 
@@ -727,36 +810,42 @@ client.on(
 
                     await safeReply(
                         interaction,
-                        "❌ Only server administrators can view authorization lists."
+                        "❌ Only administrators can view authorization lists."
                     );
 
                     return;
                 }
 
                 const users =
-                    await getAuthorizedUsers(guildId);
+                    await getAuthorizedUsers(
+                        guildId
+                    );
 
                 const roles =
-                    await getAuthorizedRoles(guildId);
+                    await getAuthorizedRoles(
+                        guildId
+                    );
 
-                let output =
-                    "🛡️ **AUTHORIZED GUARDIAN ACCESS**\n\n";
-
-                output += "**Users:**\n";
-
-                output += users.length
-                    ? users.map(
-                        id => `• <@${id}>`
-                    ).join("\n")
-                    : "• None";
-
-                output += "\n\n**Roles:**\n";
-
-                output += roles.length
-                    ? roles.map(
-                        id => `• <@&${id}>`
-                    ).join("\n")
-                    : "• None";
+                const output =
+                    [
+                        "🛡️ **AUTHORIZED GUARDIAN ACCESS**",
+                        "",
+                        "**Users:**",
+                        users.length
+                            ? users.map(
+                                id =>
+                                    `• <@${id}>`
+                            ).join("\n")
+                            : "• None",
+                        "",
+                        "**Roles:**",
+                        roles.length
+                            ? roles.map(
+                                id =>
+                                    `• <@&${id}>`
+                            ).join("\n")
+                            : "• None"
+                    ].join("\n");
 
                 await safeReply(
                     interaction,
@@ -766,10 +855,12 @@ client.on(
                 return;
             }
 
-            // /unauthorized-list
+            // ====================================
+            // UNAUTHORIZED LIST
+            // ====================================
 
             if (
-                interaction.commandName ===
+                command ===
                 "unauthorized-list"
             ) {
 
@@ -777,36 +868,42 @@ client.on(
 
                     await safeReply(
                         interaction,
-                        "❌ Only server administrators can view authorization lists."
+                        "❌ Only administrators can view authorization lists."
                     );
 
                     return;
                 }
 
                 const users =
-                    await getUnauthorizedUsers(guildId);
+                    await getUnauthorizedUsers(
+                        guildId
+                    );
 
                 const roles =
-                    await getUnauthorizedRoles(guildId);
+                    await getUnauthorizedRoles(
+                        guildId
+                    );
 
-                let output =
-                    "🚫 **UNAUTHORIZED GUARDIAN ACCESS**\n\n";
-
-                output += "**Users:**\n";
-
-                output += users.length
-                    ? users.map(
-                        id => `• <@${id}>`
-                    ).join("\n")
-                    : "• None";
-
-                output += "\n\n**Roles:**\n";
-
-                output += roles.length
-                    ? roles.map(
-                        id => `• <@&${id}>`
-                    ).join("\n")
-                    : "• None";
+                const output =
+                    [
+                        "🚫 **UNAUTHORIZED GUARDIAN ACCESS**",
+                        "",
+                        "**Users:**",
+                        users.length
+                            ? users.map(
+                                id =>
+                                    `• <@${id}>`
+                            ).join("\n")
+                            : "• None",
+                        "",
+                        "**Roles:**",
+                        roles.length
+                            ? roles.map(
+                                id =>
+                                    `• <@&${id}>`
+                            ).join("\n")
+                            : "• None"
+                    ].join("\n");
 
                 await safeReply(
                     interaction,
@@ -819,9 +916,12 @@ client.on(
             // ====================================
             // GUARDIAN ACCESS CHECK
             // ====================================
-
-            // Administrators bypass authorization.
-            // Everyone else MUST be authorized.
+            //
+            // Admins may manage Guardian.
+            //
+            // Everybody else MUST be explicitly
+            // authorized by user or role.
+            // ====================================
 
             if (!admin) {
 
@@ -842,11 +942,157 @@ client.on(
             }
 
             // ====================================
-            // /LOCKDOWN
+            // AUTO MESSAGE SET
             // ====================================
 
             if (
-                interaction.commandName ===
+                command ===
+                "auto-message-set"
+            ) {
+
+                const channelName =
+                    interaction.options
+                        .getString(
+                            "channel"
+                        )
+                        ?.trim();
+
+                const message =
+                    interaction.options
+                        .getString(
+                            "message"
+                        )
+                        ?.trim();
+
+                if (
+                    !channelName ||
+                    !message
+                ) {
+
+                    await safeReply(
+                        interaction,
+                        "❌ You must provide both a channel name and message."
+                    );
+
+                    return;
+                }
+
+                if (
+                    message.length >
+                    2000
+                ) {
+
+                    await safeReply(
+                        interaction,
+                        "❌ Discord messages cannot exceed 2000 characters."
+                    );
+
+                    return;
+                }
+
+                const result =
+                    await setAutoChannelMessage(
+                        guildId,
+                        channelName,
+                        message
+                    );
+
+                await safeReply(
+                    interaction,
+                    result
+                        ? `✅ Auto-message configured for **#${channelName.toLowerCase()}**.\n\nWhenever a channel with that name is created, Guardian will automatically send:\n\n${message}`
+                        : "❌ Could not save the auto-message."
+                );
+
+                return;
+            }
+
+            // ====================================
+            // AUTO MESSAGE REMOVE
+            // ====================================
+
+            if (
+                command ===
+                "auto-message-remove"
+            ) {
+
+                const channelName =
+                    interaction.options
+                        .getString(
+                            "channel"
+                        )
+                        ?.trim();
+
+                if (!channelName) {
+
+                    await safeReply(
+                        interaction,
+                        "❌ Please provide a channel name."
+                    );
+
+                    return;
+                }
+
+                const result =
+                    await removeAutoChannelMessage(
+                        guildId,
+                        channelName
+                    );
+
+                await safeReply(
+                    interaction,
+                    result
+                        ? `✅ Auto-message removed from **#${channelName.toLowerCase()}**.`
+                        : `⚠️ No auto-message was configured for **#${channelName.toLowerCase()}**.`
+                );
+
+                return;
+            }
+
+            // ====================================
+            // AUTO MESSAGE LIST
+            // ====================================
+
+            if (
+                command ===
+                "auto-message-list"
+            ) {
+
+                const entries =
+                    await getAutoChannelMessages(
+                        guildId
+                    );
+
+                if (!entries.length) {
+
+                    await safeReply(
+                        interaction,
+                        "📋 No automatic channel messages are configured."
+                    );
+
+                    return;
+                }
+
+                const output =
+                    entries.map(
+                        entry =>
+                            `• **#${entry.channel_name}** → ${entry.message}`
+                    ).join("\n");
+
+                await safeReply(
+                    interaction,
+                    `📋 **AUTO CHANNEL MESSAGES**\n\n${output}`
+                );
+
+                return;
+            }
+
+            // ====================================
+            // LOCKDOWN
+            // ====================================
+
+            if (
+                command ===
                 "lockdown"
             ) {
 
@@ -867,11 +1113,11 @@ client.on(
             }
 
             // ====================================
-            // /UNLOCK
+            // UNLOCK
             // ====================================
 
             if (
-                interaction.commandName ===
+                command ===
                 "unlock"
             ) {
 
@@ -891,16 +1137,18 @@ client.on(
             }
 
             // ====================================
-            // /RAIDSTATUS
+            // RAID STATUS
             // ====================================
 
             if (
-                interaction.commandName ===
+                command ===
                 "raidstatus"
             ) {
 
                 const locked =
-                    isLockedDown(guildId);
+                    isLockedDown(
+                        guildId
+                    );
 
                 await safeReply(
                     interaction,
@@ -913,23 +1161,20 @@ client.on(
             }
 
             // ====================================
-            // WORD COMMAND DATABASE CHECK
+            // WORD COMMANDS
             // ====================================
 
             if (
-                interaction.commandName ===
-                    "word-add" ||
-                interaction.commandName ===
-                    "word-remove" ||
-                interaction.commandName ===
-                    "word-list"
+                command === "word-add" ||
+                command === "word-remove" ||
+                command === "word-list"
             ) {
 
                 if (!databaseReady) {
 
                     await safeReply(
                         interaction,
-                        "❌ PostgreSQL is not ready. Please try again."
+                        "❌ PostgreSQL is not ready."
                     );
 
                     return;
@@ -937,17 +1182,19 @@ client.on(
             }
 
             // ====================================
-            // /WORD-ADD
+            // WORD ADD
             // ====================================
 
             if (
-                interaction.commandName ===
+                command ===
                 "word-add"
             ) {
 
                 const word =
                     interaction.options
-                        .getString("word")
+                        .getString(
+                            "word"
+                        )
                         ?.trim()
                         .toLowerCase();
 
@@ -955,13 +1202,13 @@ client.on(
 
                     await safeReply(
                         interaction,
-                        "❌ You must provide a word."
+                        "❌ Please provide a word."
                     );
 
                     return;
                 }
 
-                const added =
+                const result =
                     await addBlockedWord(
                         guildId,
                         word
@@ -969,8 +1216,8 @@ client.on(
 
                 await safeReply(
                     interaction,
-                    added
-                        ? `✅ **${word}** was added to the permanent blocked-word database.`
+                    result
+                        ? `✅ **${word}** was added to the blocked-word list.`
                         : `⚠️ **${word}** is already blocked.`
                 );
 
@@ -978,17 +1225,19 @@ client.on(
             }
 
             // ====================================
-            // /WORD-REMOVE
+            // WORD REMOVE
             // ====================================
 
             if (
-                interaction.commandName ===
+                command ===
                 "word-remove"
             ) {
 
                 const word =
                     interaction.options
-                        .getString("word")
+                        .getString(
+                            "word"
+                        )
                         ?.trim()
                         .toLowerCase();
 
@@ -996,13 +1245,13 @@ client.on(
 
                     await safeReply(
                         interaction,
-                        "❌ You must provide a word."
+                        "❌ Please provide a word."
                     );
 
                     return;
                 }
 
-                const removed =
+                const result =
                     await removeBlockedWord(
                         guildId,
                         word
@@ -1010,8 +1259,8 @@ client.on(
 
                 await safeReply(
                     interaction,
-                    removed
-                        ? `✅ **${word}** was removed from the blocked-word database.`
+                    result
+                        ? `✅ **${word}** was removed.`
                         : `⚠️ **${word}** was not found.`
                 );
 
@@ -1019,11 +1268,11 @@ client.on(
             }
 
             // ====================================
-            // /WORD-LIST
+            // WORD LIST
             // ====================================
 
             if (
-                interaction.commandName ===
+                command ===
                 "word-list"
             ) {
 
@@ -1042,23 +1291,19 @@ client.on(
                     return;
                 }
 
-                const list =
-                    words
-                        .map(
-                            word => `• ${word}`
-                        )
-                        .join("\n");
-
                 await safeReply(
                     interaction,
-                    `🚫 **PERMANENT BLOCKED WORDS**\n\n${list}`
+                    `🚫 **BLOCKED WORDS**\n\n${words.map(
+                        word =>
+                            `• ${word}`
+                    ).join("\n")}`
                 );
 
                 return;
             }
 
             // ====================================
-            // UNKNOWN COMMAND
+            // UNKNOWN
             // ====================================
 
             await safeReply(
@@ -1082,25 +1327,12 @@ client.on(
 );
 
 // ========================================
-// DISCORD ERRORS
+// CHANNEL CREATED
 // ========================================
-
-client.on("error", error => {
-    console.error(
-        "❌ Discord client error:",
-        error
-    );
-});
-
-client.on("warn", warning => {
-    console.warn(
-        "⚠️ Discord warning:",
-        warning
-    );
-});
-
-// ========================================
-// AUTO MESSAGE WHEN CHANNEL IS CREATED
+//
+// Looks up the CHANNEL NAME.
+// This is important because the channel ID
+// does not exist until Discord creates the channel.
 // ========================================
 
 client.on(
@@ -1109,39 +1341,14 @@ client.on(
 
         try {
 
-            // Ignore DMs
             if (!channel.guild) {
                 return;
             }
 
-            // Database must be ready
             if (!databaseReady) {
-                console.warn(
-                    `[AUTO MESSAGE] Database not ready for #${channel.name}`
-                );
-
                 return;
             }
 
-            const guildId =
-                channel.guild.id;
-
-            const channelId =
-                channel.id;
-
-            // Get configured auto message
-            const autoMessage =
-                await getAutoChannelMessage(
-                    guildId,
-                    channelId
-                );
-
-            // Nothing configured for this channel
-            if (!autoMessage) {
-                return;
-            }
-
-            // Only send where messages can actually be sent
             if (
                 !channel.isTextBased() ||
                 typeof channel.send !== "function"
@@ -1149,15 +1356,27 @@ client.on(
                 return;
             }
 
-            // Make sure Guardian can send messages
+            const guildId =
+                channel.guild.id;
+
+            const channelName =
+                channel.name
+                    .toLowerCase();
+
+            const autoMessage =
+                await getAutoChannelMessage(
+                    guildId,
+                    channelName
+                );
+
+            if (!autoMessage) {
+                return;
+            }
+
             const me =
                 channel.guild.members.me;
 
             if (!me) {
-                console.warn(
-                    `[AUTO MESSAGE] Could not find Guardian member in ${channel.guild.name}`
-                );
-
                 return;
             }
 
@@ -1166,8 +1385,11 @@ client.on(
 
             if (
                 !permissions ||
-                !permissions.has("SendMessages")
+                !permissions.has(
+                    "SendMessages"
+                )
             ) {
+
                 console.warn(
                     `[AUTO MESSAGE] Guardian cannot send messages in #${channel.name}`
                 );
@@ -1194,6 +1416,32 @@ client.on(
 );
 
 // ========================================
+// DISCORD ERRORS
+// ========================================
+
+client.on(
+    "error",
+    error => {
+
+        console.error(
+            "❌ Discord client error:",
+            error
+        );
+    }
+);
+
+client.on(
+    "warn",
+    warning => {
+
+        console.warn(
+            "⚠️ Discord warning:",
+            warning
+        );
+    }
+);
+
+// ========================================
 // START BOT
 // ========================================
 
@@ -1201,25 +1449,55 @@ async function startBot() {
 
     try {
 
-        console.log("================================");
-        console.log("🗄️ CONNECTING TO POSTGRESQL");
-        console.log("================================");
+        console.log(
+            "================================"
+        );
+
+        console.log(
+            "🗄️ CONNECTING TO POSTGRESQL"
+        );
+
+        console.log(
+            "================================"
+        );
 
         await database.initDatabase();
+
         await database.testDatabase();
 
         databaseReady = true;
 
-        console.log("✅ DATABASE READY");
-        console.log("✅ Blocked words database ready.");
-        console.log("✅ Authorized users database ready.");
-        console.log("✅ Authorized roles database ready.");
-        console.log("✅ Unauthorized users database ready.");
-        console.log("✅ Unauthorized roles database ready.");
+        console.log(
+            "✅ DATABASE READY"
+        );
 
-        console.log("================================");
-        console.log("🤖 STARTING DISCORD BOT");
-        console.log("================================");
+        console.log(
+            "✅ Authorization system ready."
+        );
+
+        console.log(
+            "✅ Role authorization system ready."
+        );
+
+        console.log(
+            "✅ Blocked-word system ready."
+        );
+
+        console.log(
+            "✅ Auto-channel-message system ready."
+        );
+
+        console.log(
+            "================================"
+        );
+
+        console.log(
+            "🤖 STARTING DISCORD BOT"
+        );
+
+        console.log(
+            "================================"
+        );
 
         await client.login(
             process.env.DISCORD_TOKEN
@@ -1229,10 +1507,21 @@ async function startBot() {
 
         databaseReady = false;
 
-        console.error("================================");
-        console.error("❌ BOT STARTUP FAILED");
-        console.error(error);
-        console.error("================================");
+        console.error(
+            "================================"
+        );
+
+        console.error(
+            "❌ BOT STARTUP FAILED"
+        );
+
+        console.error(
+            error
+        );
+
+        console.error(
+            "================================"
+        );
 
         process.exit(1);
     }
