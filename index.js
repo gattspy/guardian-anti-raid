@@ -1100,6 +1100,100 @@ client.on("warn", warning => {
 });
 
 // ========================================
+// AUTO MESSAGE WHEN CHANNEL IS CREATED
+// ========================================
+
+client.on(
+    "channelCreate",
+    async channel => {
+
+        try {
+
+            // Ignore DMs
+            if (!channel.guild) {
+                return;
+            }
+
+            // Database must be ready
+            if (!databaseReady) {
+                console.warn(
+                    `[AUTO MESSAGE] Database not ready for #${channel.name}`
+                );
+
+                return;
+            }
+
+            const guildId =
+                channel.guild.id;
+
+            const channelId =
+                channel.id;
+
+            // Get configured auto message
+            const autoMessage =
+                await getAutoChannelMessage(
+                    guildId,
+                    channelId
+                );
+
+            // Nothing configured for this channel
+            if (!autoMessage) {
+                return;
+            }
+
+            // Only send where messages can actually be sent
+            if (
+                !channel.isTextBased() ||
+                typeof channel.send !== "function"
+            ) {
+                return;
+            }
+
+            // Make sure Guardian can send messages
+            const me =
+                channel.guild.members.me;
+
+            if (!me) {
+                console.warn(
+                    `[AUTO MESSAGE] Could not find Guardian member in ${channel.guild.name}`
+                );
+
+                return;
+            }
+
+            const permissions =
+                channel.permissionsFor(me);
+
+            if (
+                !permissions ||
+                !permissions.has("SendMessages")
+            ) {
+                console.warn(
+                    `[AUTO MESSAGE] Guardian cannot send messages in #${channel.name}`
+                );
+
+                return;
+            }
+
+            await channel.send({
+                content: autoMessage
+            });
+
+            console.log(
+                `[AUTO MESSAGE] Sent automatic message in #${channel.name}`
+            );
+
+        } catch (error) {
+
+            console.error(
+                "❌ Auto channel message error:",
+                error
+            );
+        }
+    }
+);
+
+// ========================================
 // START BOT
 // ========================================
 
