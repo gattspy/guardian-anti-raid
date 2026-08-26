@@ -29,36 +29,28 @@ if (!process.env.CLIENT_ID) {
 const commands = [
 
     // ====================================
-    // LOCKDOWN
+    // RAID / SECURITY
     // ====================================
 
     new SlashCommandBuilder()
         .setName("lockdown")
         .setDescription("Lock the server during a raid."),
 
-    // ====================================
-    // UNLOCK
-    // ====================================
-
     new SlashCommandBuilder()
         .setName("unlock")
         .setDescription("Remove the server lockdown."),
-
-    // ====================================
-    // RAID STATUS
-    // ====================================
 
     new SlashCommandBuilder()
         .setName("raidstatus")
         .setDescription("Check the current raid status."),
 
     // ====================================
-    // AUTHORIZE
+    // USER AUTHORIZATION
     // ====================================
 
     new SlashCommandBuilder()
         .setName("authorize")
-        .setDescription("Allow a user to use Guardian.")
+        .setDescription("Allow a specific user to use Guardian.")
         .addUserOption(option =>
             option
                 .setName("user")
@@ -66,45 +58,65 @@ const commands = [
                 .setRequired(true)
         ),
 
-    // ====================================
-    // UNAUTHORIZE
-    // ====================================
-
     new SlashCommandBuilder()
         .setName("unauthorize")
-        .setDescription("Remove a user's Guardian access.")
+        .setDescription("Deny a specific user from using Guardian.")
         .addUserOption(option =>
             option
                 .setName("user")
-                .setDescription("User to unauthorize.")
+                .setDescription("User to deny.")
                 .setRequired(true)
         ),
 
     // ====================================
-    // AUTHORIZED LIST
+    // ROLE AUTHORIZATION
+    // ====================================
+
+    new SlashCommandBuilder()
+        .setName("authorize-role")
+        .setDescription("Allow everyone with a role to use Guardian.")
+        .addRoleOption(option =>
+            option
+                .setName("role")
+                .setDescription("Role to authorize.")
+                .setRequired(true)
+        ),
+
+    new SlashCommandBuilder()
+        .setName("unauthorize-role")
+        .setDescription("Deny everyone with a role from using Guardian.")
+        .addRoleOption(option =>
+            option
+                .setName("role")
+                .setDescription("Role to deny.")
+                .setRequired(true)
+        ),
+
+    // ====================================
+    // AUTHORIZATION LISTS
     // ====================================
 
     new SlashCommandBuilder()
         .setName("authorized-list")
-        .setDescription("Show users authorized to use Guardian."),
+        .setDescription("Show all users and roles authorized to use Guardian."),
+
+    new SlashCommandBuilder()
+        .setName("unauthorized-list")
+        .setDescription("Show all users and roles denied from using Guardian."),
 
     // ====================================
-    // WORD ADD
+    // BLOCKED WORDS
     // ====================================
 
     new SlashCommandBuilder()
         .setName("word-add")
-        .setDescription("Add a word to the blocked-word list.")
+        .setDescription("Add a word to the permanent blocked-word list.")
         .addStringOption(option =>
             option
                 .setName("word")
                 .setDescription("Word to block.")
                 .setRequired(true)
         ),
-
-    // ====================================
-    // WORD REMOVE
-    // ====================================
 
     new SlashCommandBuilder()
         .setName("word-remove")
@@ -116,13 +128,37 @@ const commands = [
                 .setRequired(true)
         ),
 
+    new SlashCommandBuilder()
+        .setName("word-list")
+        .setDescription("Show the permanent blocked-word list."),
+
     // ====================================
-    // WORD LIST
+    // AUTOMATIC CHANNEL MESSAGES
     // ====================================
 
     new SlashCommandBuilder()
-        .setName("word-list")
-        .setDescription("Show the blocked-word list.")
+        .setName("automessage-set")
+        .setDescription("Automatically send a message whenever a channel is created.")
+        .addChannelOption(option =>
+            option
+                .setName("channel")
+                .setDescription("Channel where the automatic message will be sent.")
+                .setRequired(true)
+        )
+        .addStringOption(option =>
+            option
+                .setName("message")
+                .setDescription("Message to send when a channel is created.")
+                .setRequired(true)
+        ),
+
+    new SlashCommandBuilder()
+        .setName("automessage-remove")
+        .setDescription("Remove an automatic channel-created message."),
+
+    new SlashCommandBuilder()
+        .setName("automessage-list")
+        .setDescription("Show the configured automatic channel messages.")
 
 ].map(command => command.toJSON());
 
@@ -169,7 +205,7 @@ client.once("ready", async () => {
         try {
 
             console.log(
-                `🔄 Registering commands in: ${guild.name}`
+                `🔄 Registering ${commands.length} commands in: ${guild.name}`
             );
 
             await rest.put(
@@ -190,7 +226,7 @@ client.once("ready", async () => {
 
             console.error(
                 `❌ Failed to register commands in ${guild.name}:`,
-                error.message
+                error
             );
 
         }
@@ -198,10 +234,25 @@ client.once("ready", async () => {
 
     console.log("================================");
     console.log("✅ COMMAND DEPLOYMENT COMPLETE");
+    console.log(`📋 ${commands.length} commands deployed`);
     console.log("================================");
 
     client.destroy();
+
     process.exit(0);
+});
+
+// ========================================
+// LOGIN ERROR
+// ========================================
+
+client.on("error", error => {
+
+    console.error(
+        "❌ Discord client error:",
+        error
+    );
+
 });
 
 // ========================================
@@ -210,4 +261,14 @@ client.once("ready", async () => {
 
 client.login(
     process.env.DISCORD_TOKEN
-);
+).catch(error => {
+
+    console.error(
+        "❌ Failed to login to Discord:"
+    );
+
+    console.error(error);
+
+    process.exit(1);
+
+});
