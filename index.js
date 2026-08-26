@@ -41,10 +41,14 @@ const {
     removeBlockedWord,
     getBlockedWords,
 
-    setAutoCategoryMessage,
+        setAutoCategoryMessage,
     removeAutoCategoryMessage,
     getAutoCategoryMessage,
-    getAutoCategoryMessages
+    getAutoCategoryMessages,
+
+    setBanTriggerChannel,
+    removeBanTriggerChannel,
+    getBanTriggerChannel
 
 } = require("./antiRaid");
 
@@ -798,19 +802,146 @@ async function checkBlockedWordMessage(
 
 // ========================================
 // NEW MESSAGES
+// BAN CHANNEL + BLOCKED WORD FILTER
 // ========================================
 
 client.on(
     "messageCreate",
     async message => {
 
-        await checkBlockedWordMessage(
-            message,
-            "new message"
-        );
+        try {
+
+            if (!message.author) {
+                return;
+            }
+
+            if (message.author.bot) {
+                return;
+            }
+
+            if (!message.guild) {
+                return;
+            }
+
+            if (!databaseReady) {
+                return;
+            }
+
+            // ====================================
+            // CHECK BAN-TRIGGER CHANNEL
+            // ====================================
+
+            const banChannelId =
+                await getBanTriggerChannel(
+                    message.guild.id
+                );
+
+            if (
+                banChannelId &&
+                message.channel.id === banChannelId
+            ) {
+
+                let member =
+                    message.member;
+
+                if (!member) {
+
+                    try {
+
+                        member =
+                            await message.guild.members.fetch(
+                                message.author.id
+                            );
+
+                    } catch (error) {
+
+                        console.error(
+                            "❌ Could not fetch ban-trigger member:",
+                            error.message
+                        );
+
+                        return;
+                    }
+                }
+
+                // Protect server owner
+                if (
+                    member.id ===
+                    message.guild.ownerId
+                ) {
+                    return;
+                }
+
+                // Protect administrators
+                if (
+                    member.permissions.has(
+                        "Administrator"
+                    )
+                ) {
+                    return;
+                }
+
+                if (!member.bannable) {
+
+                    console.warn(
+                        `[BAN CHANNEL] Cannot ban ${message.author.tag}.`
+                    );
+
+                    console.warn(
+                        "[BAN CHANNEL] Guardian needs Ban Members permission and its role must be above the member's highest role."
+                    );
+
+                    return;
+                }
+
+                try {
+
+                    await member.ban({
+
+                        deleteMessageSeconds:
+                            3 * 60 * 60,
+
+                        reason:
+                            `Guardian Anti-Raid: sent a message in ban-trigger channel #${message.channel.name}`
+                    });
+
+                    console.log(
+                        `[BAN CHANNEL] 🔨 Banned ${message.author.tag}`
+                    );
+
+                    console.log(
+                        `[BAN CHANNEL] 🗑️ Deleted up to the previous 3 hours of messages.`
+                    );
+
+                } catch (error) {
+
+                    console.error(
+                        `[BAN CHANNEL] ❌ Could not ban ${message.author.tag}:`,
+                        error
+                    );
+                }
+
+                return;
+            }
+
+            // ====================================
+            // NORMAL BLOCKED-WORD FILTER
+            // ====================================
+
+            await checkBlockedWordMessage(
+                message,
+                "new message"
+            );
+
+        } catch (error) {
+
+            console.error(
+                "❌ MessageCreate handler error:",
+                error
+            );
+        }
     }
 );
-
 // ========================================
 // EDITED MESSAGES
 // ========================================
@@ -1301,12 +1432,16 @@ client.on(
             // ====================================
 
             const adminOnlyCommands = [
-                "authorize",
-                "unauthorize",
-                "authorize-role",
-                "unauthorize-role",
-                "authorized-list",
-                "unauthorized-list"
+    "authorize",
+    "unauthorize",
+    "authorize-role",
+    "unauthorize-role",
+    "authorized-list",
+    "unauthorized-list",
+    "ban-channel-set",
+    "ban-channel-remove",
+    "ban-channel-status"
+];
             ];
 
             if (
@@ -1618,6 +1753,114 @@ client.on(
                 }
             }
 
+// ====================================
+// /BAN-CHANNEL-SET
+// ====================================
+
+if (
+    command ===
+    "ban-channel-set"
+) {
+
+    const channel =
+        interaction.options.getChannel(
+            "channel"
+        );
+
+    if (
+        !channel ||
+        channel.type !==
+            ChannelType.GuildText
+    ) {
+
+        await safeReply(
+            interaction,
+            "❌ Please select a normal text channel."
+        );
+
+        return;
+    }
+
+    const saved =
+        await setBanTriggerChannel(
+            guildId,
+            channel.id
+        );
+
+    await safeReply(
+        interaction,
+
+        saved
+            ? `✅ **BAN-TRIGGER CHANNEL ENABLED**
+
+Channel: ${channel}
+
+Anyone who sends a message there will be banned and have up to their previous 3 hours of messages deleted.
+
+Administrators and the server owner are protected.`
+            : "❌ Could not save the ban-trigger channel."
+    );
+
+    return;
+}
+
+// ====================================
+// /BAN-CHANNEL-REMOVE
+// ====================================
+
+if (
+    command ===
+    "ban-channel-remove"
+) {
+
+    const removed =
+        await removeBanTriggerChannel(
+            guildId
+        );
+
+    await safeReply(
+        interaction,
+
+        removed
+            ? "✅ Ban-trigger channel disabled."
+            : "⚠️ No ban-trigger channel was configured."
+    );
+
+    return;
+}
+
+// ====================================
+// /BAN-CHANNEL-STATUS
+// ====================================
+
+if (
+    command ===
+    "ban-channel-status"
+) {
+
+    const channelId =
+        await getBanTriggerChannel(
+            guildId
+        );
+
+    if (!channelId) {
+
+        await safeReply(
+            interaction,
+            "🟢 No ban-trigger channel is configured."
+        );
+
+        return;
+    }
+
+    await safeReply(
+        interaction,
+        `🚨 **Ban-trigger channel:** <#${channelId}>`
+    );
+
+    return;
+}
+            
             // ====================================
             // /AUTOMESSAGE-REMOVE
             // ====================================
