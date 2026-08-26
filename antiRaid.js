@@ -120,7 +120,7 @@ function removeWhitelist(
 }
 
 // ========================================
-// KICK
+// KICK MEMBER
 // ========================================
 
 async function kickMember(
@@ -145,7 +145,9 @@ async function kickMember(
             return false;
         }
 
-        await member.kick(reason);
+        await member.kick(
+            reason
+        );
 
         console.log(
             `[KICKED] ${member.user.tag}`
@@ -181,7 +183,9 @@ async function lockdown(
     }
 
     const state =
-        getGuildState(guild.id);
+        getGuildState(
+            guild.id
+        );
 
     if (state.lockdown) {
         return false;
@@ -241,7 +245,9 @@ async function lockdown(
 
                 try {
 
-                    await unlock(guild);
+                    await unlock(
+                        guild
+                    );
 
                 } catch (error) {
 
@@ -250,7 +256,6 @@ async function lockdown(
                         error
                     );
                 }
-
             },
             config.lockdownDuration
         );
@@ -262,14 +267,18 @@ async function lockdown(
 // UNLOCK
 // ========================================
 
-async function unlock(guild) {
+async function unlock(
+    guild
+) {
 
     if (!guild) {
         return false;
     }
 
     const state =
-        getGuildState(guild.id);
+        getGuildState(
+            guild.id
+        );
 
     if (!state.lockdown) {
         return false;
@@ -277,13 +286,16 @@ async function unlock(guild) {
 
     state.lockdown = false;
 
-    if (state.lockdownTimer) {
+    if (
+        state.lockdownTimer
+    ) {
 
         clearTimeout(
             state.lockdownTimer
         );
 
-        state.lockdownTimer = null;
+        state.lockdownTimer =
+            null;
     }
 
     console.log(
@@ -335,7 +347,9 @@ async function unlock(guild) {
 // LOCKDOWN STATUS
 // ========================================
 
-function isLockedDown(guildId) {
+function isLockedDown(
+    guildId
+) {
 
     return getGuildState(
         guildId
@@ -346,10 +360,14 @@ function isLockedDown(guildId) {
 // RECENT JOIN COUNT
 // ========================================
 
-function getRecentJoinCount(guildId) {
+function getRecentJoinCount(
+    guildId
+) {
 
     const state =
-        getGuildState(guildId);
+        getGuildState(
+            guildId
+        );
 
     const now =
         Date.now();
@@ -411,7 +429,7 @@ async function findBlockedWord(
 }
 
 // ========================================
-// USERS
+// USER AUTHORIZATION
 // ========================================
 
 async function authorizeUser(
@@ -477,7 +495,7 @@ async function getUnauthorizedUsers(
 }
 
 // ========================================
-// ROLES
+// ROLE AUTHORIZATION
 // ========================================
 
 async function authorizeRole(
@@ -546,7 +564,9 @@ async function getUnauthorizedRoles(
 // GUARDIAN ACCESS CONTROL
 // ========================================
 
-async function canUseGuardian(member) {
+async function canUseGuardian(
+    member
+) {
 
     if (
         !member ||
@@ -562,7 +582,7 @@ async function canUseGuardian(member) {
         member.id;
 
     // ====================================
-    // ADMINISTRATORS
+    // ADMINISTRATORS ALWAYS ALLOWED
     // ====================================
 
     if (
@@ -596,7 +616,10 @@ async function canUseGuardian(member) {
         member.roles.cache.values()
     ) {
 
-        if (role.id === guildId) {
+        if (
+            role.id ===
+            guildId
+        ) {
             continue;
         }
 
@@ -624,7 +647,7 @@ async function canUseGuardian(member) {
     }
 
     // ====================================
-    // AUTHORIZED ROLE
+    // AUTHORIZED ROLE ALLOW
     // ====================================
 
     for (
@@ -632,7 +655,10 @@ async function canUseGuardian(member) {
         member.roles.cache.values()
     ) {
 
-        if (role.id === guildId) {
+        if (
+            role.id ===
+            guildId
+        ) {
             continue;
         }
 
@@ -656,23 +682,6 @@ async function canUseGuardian(member) {
 // ========================================
 // AUTO CATEGORY MESSAGES
 // ========================================
-//
-// These match the new PostgreSQL table:
-//
-// auto_category_messages
-//
-// guild_id
-// category_id
-// message
-//
-// A message is assigned to a CATEGORY,
-// not to an individual channel.
-//
-// ========================================
-
-// ========================================
-// SET AUTO CATEGORY MESSAGE
-// ========================================
 
 async function setAutoCategoryMessage(
     guildId,
@@ -687,10 +696,6 @@ async function setAutoCategoryMessage(
     );
 }
 
-// ========================================
-// REMOVE AUTO CATEGORY MESSAGE
-// ========================================
-
 async function removeAutoCategoryMessage(
     guildId,
     categoryId
@@ -701,10 +706,6 @@ async function removeAutoCategoryMessage(
         categoryId
     );
 }
-
-// ========================================
-// GET AUTO CATEGORY MESSAGE
-// ========================================
 
 async function getAutoCategoryMessage(
     guildId,
@@ -717,15 +718,44 @@ async function getAutoCategoryMessage(
     );
 }
 
-// ========================================
-// GET ALL AUTO CATEGORY MESSAGES
-// ========================================
-
 async function getAutoCategoryMessages(
     guildId
 ) {
 
     return database.getAutoCategoryMessages(
+        guildId
+    );
+}
+
+// ========================================
+// BAN TRIGGER CHANNEL
+// ========================================
+
+async function setBanTriggerChannel(
+    guildId,
+    channelId
+) {
+
+    return database.setBanTriggerChannel(
+        guildId,
+        channelId
+    );
+}
+
+async function removeBanTriggerChannel(
+    guildId
+) {
+
+    return database.removeBanTriggerChannel(
+        guildId
+    );
+}
+
+async function getBanTriggerChannel(
+    guildId
+) {
+
+    return database.getBanTriggerChannel(
         guildId
     );
 }
@@ -805,6 +835,14 @@ module.exports = {
     removeAutoCategoryMessage,
     getAutoCategoryMessage,
     getAutoCategoryMessages,
+
+    // ====================================
+    // BAN TRIGGER CHANNEL
+    // ====================================
+
+    setBanTriggerChannel,
+    removeBanTriggerChannel,
+    getBanTriggerChannel,
 
     // ====================================
     // GUARDIAN ACCESS
