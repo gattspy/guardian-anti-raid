@@ -945,4 +945,9 @@ module.exports = {
     isUnauthorizedRole,
     getAuthorizedRoles,
     getUnauthorizedRoles
+
+    setAutoChannelMessage,
+removeAutoChannelMessage,
+getAutoChannelMessage,
+getAutoChannelMessages,
 };
