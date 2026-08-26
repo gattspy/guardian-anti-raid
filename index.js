@@ -608,6 +608,236 @@ client.on(
 );
 
 // ========================================
+// BLOCKED WORD MODERATION
+// ========================================
+
+async function checkBlockedWordMessage(
+    message,
+    source = "message"
+) {
+
+    try {
+
+        // Ignore bots
+        if (!message.author) {
+            return;
+        }
+
+        if (message.author.bot) {
+            return;
+        }
+
+        // Ignore DMs
+        if (!message.guild) {
+            return;
+        }
+
+        // Database must be ready
+        if (!databaseReady) {
+            return;
+        }
+
+        // Ignore messages without content
+        if (!message.content) {
+            return;
+        }
+
+        // ====================================
+        // FIND BLOCKED WORD
+        // ====================================
+
+        const blockedWord =
+            await findBlockedWord(
+                message.guild.id,
+                message.content
+            );
+
+        if (!blockedWord) {
+            return;
+        }
+
+        console.log(
+            `[WORD FILTER] ${message.author.tag} used blocked word "${blockedWord}" (${source})`
+        );
+
+        // ====================================
+        // DELETE MESSAGE
+        // ====================================
+
+        try {
+
+            if (message.deletable) {
+
+                await message.delete();
+
+                console.log(
+                    `[WORD FILTER] 🗑️ Deleted ${source} from ${message.author.tag}`
+                );
+
+            } else {
+
+                console.warn(
+                    `[WORD FILTER] Cannot delete message from ${message.author.tag}`
+                );
+            }
+
+        } catch (error) {
+
+            console.error(
+                "❌ Could not delete blocked-word message:",
+                error.message
+            );
+        }
+
+        // ====================================
+        // GET MEMBER
+        // ====================================
+
+        let member =
+            message.member;
+
+        // On edited messages, member may not always
+        // already be available.
+        if (!member) {
+
+            try {
+
+                member =
+                    await message.guild.members.fetch(
+                        message.author.id
+                    );
+
+            } catch (error) {
+
+                console.error(
+                    "❌ Could not fetch message member:",
+                    error.message
+                );
+
+                return;
+            }
+        }
+
+        // ====================================
+        // 24-HOUR TIMEOUT
+        // ====================================
+
+        const timeoutDuration =
+            config.wordTimeoutDuration ||
+            24 * 60 * 60 * 1000;
+
+        if (!member.moderatable) {
+
+            console.warn(
+                `[WORD FILTER] Cannot timeout ${message.author.tag}.`
+            );
+
+            console.warn(
+                "[WORD FILTER] Make sure Guardian has Moderate Members and its role is above the member."
+            );
+
+            return;
+        }
+
+        try {
+
+            await member.timeout(
+                timeoutDuration,
+                `Guardian Anti-Raid: used blocked word "${blockedWord}"`
+            );
+
+            console.log(
+                `[WORD FILTER] ⏱️ Timed out ${message.author.tag} for 24 hours.`
+            );
+
+        } catch (error) {
+
+            console.error(
+                "❌ Could not timeout member:",
+                error.message
+            );
+        }
+
+    } catch (error) {
+
+        console.error(
+            "❌ Blocked-word moderation error:",
+            error
+        );
+    }
+}
+
+// ========================================
+// NEW MESSAGES
+// ========================================
+
+client.on(
+    "messageCreate",
+    async message => {
+
+        await checkBlockedWordMessage(
+            message,
+            "new message"
+        );
+    }
+);
+
+// ========================================
+// EDITED MESSAGES
+// ========================================
+
+client.on(
+    "messageUpdate",
+    async (
+        oldMessage,
+        newMessage
+    ) => {
+
+        try {
+
+            // Partial message: fetch the complete version.
+            if (newMessage.partial) {
+
+                try {
+
+                    newMessage =
+                        await newMessage.fetch();
+
+                } catch (error) {
+
+                    console.error(
+                        "❌ Could not fetch edited message:",
+                        error.message
+                    );
+
+                    return;
+                }
+            }
+
+            // Ignore if text did not actually change.
+            if (
+                oldMessage?.content ===
+                newMessage?.content
+            ) {
+                return;
+            }
+
+            await checkBlockedWordMessage(
+                newMessage,
+                "edited message"
+            );
+
+        } catch (error) {
+
+            console.error(
+                "❌ Edited-message filter error:",
+                error
+            );
+        }
+    }
+);
+
+// ========================================
 // SLASH COMMANDS
 // ========================================
 
