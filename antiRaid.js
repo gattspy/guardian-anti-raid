@@ -642,6 +642,50 @@ async function canUseGuardian(member) {
 }
 
 // ========================================
+// AUTO CHANNEL MESSAGES
+// ========================================
+
+async function setAutoChannelMessage(
+    guildId,
+    channelId,
+    message
+) {
+    return database.setAutoChannelMessage(
+        guildId,
+        channelId,
+        message
+    );
+}
+
+async function removeAutoChannelMessage(
+    guildId,
+    channelId
+) {
+    return database.removeAutoChannelMessage(
+        guildId,
+        channelId
+    );
+}
+
+async function getAutoChannelMessage(
+    guildId,
+    channelId
+) {
+    return database.getAutoChannelMessage(
+        guildId,
+        channelId
+    );
+}
+
+async function getAutoChannelMessages(
+    guildId
+) {
+    return database.getAutoChannelMessages(
+        guildId
+    );
+}
+
+// ========================================
 // EXPORTS
 // ========================================
 
@@ -679,6 +723,11 @@ module.exports = {
     isUnauthorizedRole,
     getAuthorizedRoles,
     getUnauthorizedRoles,
+
+    setAutoChannelMessage,
+removeAutoChannelMessage,
+getAutoChannelMessage,
+getAutoChannelMessages,
 
     canUseGuardian
 };
