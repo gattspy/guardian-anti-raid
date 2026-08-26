@@ -7,20 +7,30 @@ const { Pool } = require("pg");
 // ========================================
 
 if (!process.env.DATABASE_URL) {
-    console.error("❌ DATABASE_URL is missing.");
+
+    console.error(
+        "❌ DATABASE_URL is missing."
+    );
+
     process.exit(1);
 }
 
 const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
+
+    connectionString:
+        process.env.DATABASE_URL,
 
     ssl: {
         rejectUnauthorized: false
     },
 
     max: 10,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000
+
+    idleTimeoutMillis:
+        30000,
+
+    connectionTimeoutMillis:
+        10000
 });
 
 let databaseReady = false;
@@ -30,29 +40,33 @@ let databaseReady = false;
 // ========================================
 
 function cleanText(value) {
-    return String(value || "").trim();
+
+    return String(
+        value || ""
+    ).trim();
 }
 
 function cleanLower(value) {
-    return cleanText(value).toLowerCase();
+
+    return cleanText(
+        value
+    ).toLowerCase();
 }
 
 // ========================================
 // WORD FILTER NORMALIZATION
 // ========================================
 
-function normalizeForWordFilter(text) {
+function normalizeForWordFilter(
+    text
+) {
 
     return String(text || "")
 
-        // Convert many Unicode/stylized fonts
-        // into their normal equivalent.
         .normalize("NFKC")
 
-        // Break accented characters apart.
         .normalize("NFD")
 
-        // Remove combining marks.
         .replace(
             /\p{M}/gu,
             ""
@@ -60,8 +74,6 @@ function normalizeForWordFilter(text) {
 
         .normalize("NFC")
 
-        // Remove common invisible / zero-width
-        // characters used to bypass filters.
         .replace(
             /[\u200B-\u200D\u2060\uFEFF]/g,
             ""
@@ -74,7 +86,9 @@ function normalizeForWordFilter(text) {
 // REGEX ESCAPE
 // ========================================
 
-function escapeRegExp(text) {
+function escapeRegExp(
+    text
+) {
 
     return String(text).replace(
         /[.*+?^${}()|[\]\\]/g,
@@ -183,6 +197,19 @@ async function initDatabase() {
             );
         `);
 
+        // ====================================
+        // BAN TRIGGER CHANNEL
+        // ====================================
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS ban_trigger_channels (
+                guild_id TEXT NOT NULL PRIMARY KEY,
+                channel_id TEXT NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            );
+        `);
+
         databaseReady = true;
 
         console.log(
@@ -199,6 +226,10 @@ async function initDatabase() {
 
         console.log(
             "✅ Auto-category message table ready."
+        );
+
+        console.log(
+            "✅ Ban-trigger channel table ready."
         );
 
     } catch (error) {
@@ -393,30 +424,14 @@ async function getBlockedWords(
         );
 
     return result.rows.map(
-        row => row.word
+        row =>
+            row.word
     );
 }
 
 // ========================================
 // FIND BLOCKED WORD
-// ========================================
-// IMPORTANT:
-// This matches ONLY standalone blocked words.
-//
-// Example if "ass" is blocked:
-//
-// ass            -> BLOCK
-// ASS            -> BLOCK
-// "you ass!"     -> BLOCK
-// 𝐚𝐬𝐬            -> BLOCK
-// 𝕒𝕤𝕤            -> BLOCK
-// ａｓｓ           -> BLOCK
-//
-// class          -> ALLOW
-// grass          -> ALLOW
-// glasses        -> ALLOW
-// assassin       -> ALLOW
-// passage        -> ALLOW
+// WHOLE-WORD MATCHING
 // ========================================
 
 async function findBlockedWord(
@@ -466,18 +481,6 @@ async function findBlockedWord(
                 cleanWord
             );
 
-        /*
-         * Unicode-aware boundaries.
-         *
-         * This prevents:
-         *
-         * ass -> class
-         * ass -> grass
-         * ass -> assassin
-         *
-         * from triggering.
-         */
-
         const regex =
             new RegExp(
                 `(?<![\\p{L}\\p{N}_])${escapedWord}(?![\\p{L}\\p{N}_])`,
@@ -513,11 +516,14 @@ async function authorizeUser(
         );
     }
 
-    if (!guildId || !userId) {
+    if (
+        !guildId ||
+        !userId
+    ) {
         return false;
     }
 
-    // Remove explicit denial.
+    // Remove explicit denial first.
     await pool.query(
         `
         DELETE FROM unauthorized_users
@@ -575,11 +581,14 @@ async function unauthorizeUser(
         );
     }
 
-    if (!guildId || !userId) {
+    if (
+        !guildId ||
+        !userId
+    ) {
         return false;
     }
 
-    // Remove existing authorization.
+    // Remove existing authorization first.
     await pool.query(
         `
         DELETE FROM authorized_users
@@ -634,7 +643,10 @@ async function isAuthorizedUser(
         return false;
     }
 
-    if (!guildId || !userId) {
+    if (
+        !guildId ||
+        !userId
+    ) {
         return false;
     }
 
@@ -672,7 +684,10 @@ async function isUnauthorizedUser(
         return false;
     }
 
-    if (!guildId || !userId) {
+    if (
+        !guildId ||
+        !userId
+    ) {
         return false;
     }
 
@@ -733,7 +748,8 @@ async function getAuthorizedUsers(
         );
 
     return result.rows.map(
-        row => row.user_id
+        row =>
+            row.user_id
     );
 }
 
@@ -773,7 +789,8 @@ async function getUnauthorizedUsers(
         );
 
     return result.rows.map(
-        row => row.user_id
+        row =>
+            row.user_id
     );
 }
 
@@ -793,11 +810,14 @@ async function authorizeRole(
         );
     }
 
-    if (!guildId || !roleId) {
+    if (
+        !guildId ||
+        !roleId
+    ) {
         return false;
     }
 
-    // Remove explicit denial.
+    // Remove explicit denial first.
     await pool.query(
         `
         DELETE FROM unauthorized_roles
@@ -855,11 +875,14 @@ async function unauthorizeRole(
         );
     }
 
-    if (!guildId || !roleId) {
+    if (
+        !guildId ||
+        !roleId
+    ) {
         return false;
     }
 
-    // Remove existing authorization.
+    // Remove existing authorization first.
     await pool.query(
         `
         DELETE FROM authorized_roles
@@ -914,7 +937,10 @@ async function isAuthorizedRole(
         return false;
     }
 
-    if (!guildId || !roleId) {
+    if (
+        !guildId ||
+        !roleId
+    ) {
         return false;
     }
 
@@ -952,7 +978,10 @@ async function isUnauthorizedRole(
         return false;
     }
 
-    if (!guildId || !roleId) {
+    if (
+        !guildId ||
+        !roleId
+    ) {
         return false;
     }
 
@@ -1013,7 +1042,8 @@ async function getAuthorizedRoles(
         );
 
     return result.rows.map(
-        row => row.role_id
+        row =>
+            row.role_id
     );
 }
 
@@ -1053,7 +1083,8 @@ async function getUnauthorizedRoles(
         );
 
     return result.rows.map(
-        row => row.role_id
+        row =>
+            row.role_id
     );
 }
 
@@ -1255,6 +1286,142 @@ async function getAutoCategoryMessages(
 }
 
 // ========================================
+// SET BAN TRIGGER CHANNEL
+// ========================================
+
+async function setBanTriggerChannel(
+    guildId,
+    channelId
+) {
+
+    if (!databaseReady) {
+
+        throw new Error(
+            "Database is not ready."
+        );
+    }
+
+    if (
+        !guildId ||
+        !channelId
+    ) {
+        return false;
+    }
+
+    const result =
+        await pool.query(
+            `
+            INSERT INTO ban_trigger_channels
+                (
+                    guild_id,
+                    channel_id,
+                    updated_at
+                )
+
+            VALUES
+                ($1, $2, NOW())
+
+            ON CONFLICT
+                (guild_id)
+
+            DO UPDATE SET
+                channel_id =
+                    EXCLUDED.channel_id,
+                updated_at =
+                    NOW()
+
+            RETURNING channel_id;
+            `,
+            [
+                guildId,
+                channelId
+            ]
+        );
+
+    return result.rowCount > 0;
+}
+
+// ========================================
+// REMOVE BAN TRIGGER CHANNEL
+// ========================================
+
+async function removeBanTriggerChannel(
+    guildId
+) {
+
+    if (!databaseReady) {
+
+        throw new Error(
+            "Database is not ready."
+        );
+    }
+
+    if (!guildId) {
+        return false;
+    }
+
+    const result =
+        await pool.query(
+            `
+            DELETE FROM ban_trigger_channels
+
+            WHERE guild_id = $1
+
+            RETURNING channel_id;
+            `,
+            [
+                guildId
+            ]
+        );
+
+    return result.rowCount > 0;
+}
+
+// ========================================
+// GET BAN TRIGGER CHANNEL
+// ========================================
+
+async function getBanTriggerChannel(
+    guildId
+) {
+
+    if (!databaseReady) {
+
+        throw new Error(
+            "Database is not ready."
+        );
+    }
+
+    if (!guildId) {
+        return null;
+    }
+
+    const result =
+        await pool.query(
+            `
+            SELECT channel_id
+
+            FROM ban_trigger_channels
+
+            WHERE guild_id = $1
+
+            LIMIT 1;
+            `,
+            [
+                guildId
+            ]
+        );
+
+    if (
+        result.rowCount === 0
+    ) {
+        return null;
+    }
+
+    return result.rows[0].channel_id;
+}
+
+// ========================================
 // EXPORTS
 // ========================================
 
@@ -1266,7 +1433,7 @@ module.exports = {
     testDatabase,
     isDatabaseReady,
 
-    // Helpers used by filtering
+    // Helpers
     normalizeForWordFilter,
 
     // Blocked words
@@ -1295,5 +1462,10 @@ module.exports = {
     setAutoCategoryMessage,
     removeAutoCategoryMessage,
     getAutoCategoryMessage,
-    getAutoCategoryMessages
+    getAutoCategoryMessages,
+
+    // Ban trigger channel
+    setBanTriggerChannel,
+    removeBanTriggerChannel,
+    getBanTriggerChannel
 };
