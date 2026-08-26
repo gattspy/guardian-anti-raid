@@ -17,7 +17,6 @@ if (!process.env.DISCORD_TOKEN) {
     console.error(
         "❌ DISCORD_TOKEN is missing from .env"
     );
-
     process.exit(1);
 }
 
@@ -25,7 +24,6 @@ if (!process.env.CLIENT_ID) {
     console.error(
         "❌ CLIENT_ID is missing from .env"
     );
-
     process.exit(1);
 }
 
@@ -182,24 +180,16 @@ const commands = [
     new SlashCommandBuilder()
         .setName("automessage-set")
         .setDescription(
-            "Send a message when a channel is created inside a category."
+            "Set a multi-line message for new channels in a category."
         )
         .addChannelOption(option =>
             option
                 .setName("category")
                 .setDescription(
-                    "Category to monitor for newly created channels."
+                    "Category to monitor."
                 )
                 .addChannelTypes(
                     ChannelType.GuildCategory
-                )
-                .setRequired(true)
-        )
-        .addStringOption(option =>
-            option
-                .setName("message")
-                .setDescription(
-                    "Message Guardian should automatically send."
                 )
                 .setRequired(true)
         ),
@@ -242,7 +232,7 @@ const client = new Client({
 });
 
 // ========================================
-// BOT READY
+// READY
 // ========================================
 
 client.once(
@@ -276,10 +266,6 @@ client.once(
                 process.env.DISCORD_TOKEN
             );
 
-        // ====================================
-        // REGISTER COMMANDS
-        // ====================================
-
         for (
             const guild of
             client.guilds.cache.values()
@@ -308,13 +294,10 @@ client.once(
             } catch (error) {
 
                 console.error(
-                    `❌ Failed to register commands in ${guild.name}:`
+                    `❌ Failed to register commands in ${guild.name}:`,
+                    error
                 );
-
-                console.error(error);
-
             }
-
         }
 
         console.log(
@@ -334,13 +317,12 @@ client.once(
         );
 
         client.destroy();
-
         process.exit(0);
     }
 );
 
 // ========================================
-// LOGIN ERROR
+// ERROR
 // ========================================
 
 client.on(
@@ -351,7 +333,6 @@ client.on(
             "❌ Discord client error:",
             error
         );
-
     }
 );
 
@@ -370,5 +351,4 @@ client.login(
     console.error(error);
 
     process.exit(1);
-
 });
