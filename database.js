@@ -789,6 +789,133 @@ async function getUnauthorizedRoles(
 }
 
 // ========================================
+// AUTO CHANNEL MESSAGE FUNCTIONS
+// ========================================
+
+async function setAutoChannelMessage(
+    guildId,
+    channelId,
+    message
+) {
+    if (!databaseReady) {
+        throw new Error("Database is not ready.");
+    }
+
+    if (!guildId || !channelId || !message) {
+        return false;
+    }
+
+    const result = await pool.query(
+        `
+        INSERT INTO auto_channel_messages
+            (guild_id, channel_id, message)
+
+        VALUES
+            ($1, $2, $3)
+
+        ON CONFLICT
+            (guild_id, channel_id)
+
+        DO UPDATE SET
+            message = EXCLUDED.message
+
+        RETURNING channel_id;
+        `,
+        [
+            guildId,
+            channelId,
+            message
+        ]
+    );
+
+    return result.rowCount > 0;
+}
+
+async function removeAutoChannelMessage(
+    guildId,
+    channelId
+) {
+    if (!databaseReady) {
+        throw new Error("Database is not ready.");
+    }
+
+    const result = await pool.query(
+        `
+        DELETE FROM auto_channel_messages
+
+        WHERE guild_id = $1
+        AND channel_id = $2
+
+        RETURNING channel_id;
+        `,
+        [
+            guildId,
+            channelId
+        ]
+    );
+
+    return result.rowCount > 0;
+}
+
+async function getAutoChannelMessage(
+    guildId,
+    channelId
+) {
+    if (!databaseReady) {
+        throw new Error("Database is not ready.");
+    }
+
+    const result = await pool.query(
+        `
+        SELECT message
+
+        FROM auto_channel_messages
+
+        WHERE guild_id = $1
+        AND channel_id = $2
+
+        LIMIT 1;
+        `,
+        [
+            guildId,
+            channelId
+        ]
+    );
+
+    if (result.rowCount === 0) {
+        return null;
+    }
+
+    return result.rows[0].message;
+}
+
+async function getAutoChannelMessages(
+    guildId
+) {
+    if (!databaseReady) {
+        throw new Error("Database is not ready.");
+    }
+
+    const result = await pool.query(
+        `
+        SELECT
+            channel_id,
+            message,
+            created_at
+
+        FROM auto_channel_messages
+
+        WHERE guild_id = $1
+
+        ORDER BY created_at ASC;
+        `,
+        [guildId]
+    );
+
+    return result.rows;
+}
+
+// ========================================
 // EXPORTS
 // ========================================
 
