@@ -30,10 +30,16 @@ function getGuildState(guildId) {
 // JOIN TRACKING
 // ========================================
 
-function recordJoin(guildId, userId) {
+function recordJoin(
+    guildId,
+    userId
+) {
 
-    const state = getGuildState(guildId);
-    const now = Date.now();
+    const state =
+        getGuildState(guildId);
+
+    const now =
+        Date.now();
 
     state.joins.push({
         userId,
@@ -80,32 +86,35 @@ function isWhitelisted(member) {
         return false;
     }
 
-    const state =
-        getGuildState(
-            member.guild.id
-        );
-
-    return state.whitelistedUsers.has(
+    return getGuildState(
+        member.guild.id
+    ).whitelistedUsers.has(
         member.id
     );
 }
 
-function whitelistUser(guildId, userId) {
+function whitelistUser(
+    guildId,
+    userId
+) {
 
-    const state =
-        getGuildState(guildId);
-
-    state.whitelistedUsers.add(userId);
+    getGuildState(
+        guildId
+    ).whitelistedUsers.add(
+        userId
+    );
 
     return true;
 }
 
-function removeWhitelist(guildId, userId) {
+function removeWhitelist(
+    guildId,
+    userId
+) {
 
-    const state =
-        getGuildState(guildId);
-
-    return state.whitelistedUsers.delete(
+    return getGuildState(
+        guildId
+    ).whitelistedUsers.delete(
         userId
     );
 }
@@ -121,7 +130,10 @@ async function kickMember(
 
     try {
 
-        if (!member || !member.kickable) {
+        if (
+            !member ||
+            !member.kickable
+        ) {
 
             console.log(
                 `[KICK FAILED] Cannot kick ${
@@ -228,11 +240,8 @@ async function lockdown(
             async () => {
 
                 try {
-
                     await unlock(guild);
-
                 } catch (error) {
-
                     console.error(
                         "Automatic unlock error:",
                         error
@@ -331,7 +340,7 @@ function isLockedDown(guildId) {
 }
 
 // ========================================
-// RECENT JOINS
+// RECENT JOIN COUNT
 // ========================================
 
 function getRecentJoinCount(guildId) {
@@ -339,7 +348,8 @@ function getRecentJoinCount(guildId) {
     const state =
         getGuildState(guildId);
 
-    const now = Date.now();
+    const now =
+        Date.now();
 
     state.joins =
         state.joins.filter(
@@ -394,7 +404,7 @@ async function findBlockedWord(
 }
 
 // ========================================
-// USER AUTHORIZATION
+// USERS
 // ========================================
 
 async function authorizeUser(
@@ -454,7 +464,7 @@ async function getUnauthorizedUsers(
 }
 
 // ========================================
-// ROLE AUTHORIZATION
+// ROLES
 // ========================================
 
 async function authorizeRole(
@@ -516,19 +526,6 @@ async function getUnauthorizedRoles(
 // ========================================
 // GUARDIAN ACCESS CONTROL
 // ========================================
-//
-// RULES:
-//
-// 1. Administrator = ALLOWED
-// 2. Explicit unauthorized user = DENIED
-// 3. Explicit unauthorized role = DENIED
-// 4. Explicit authorized user = ALLOWED
-// 5. Authorized role = ALLOWED
-// 6. Everyone else = DENIED
-//
-// Unauthorized always overrides authorization.
-//
-// ========================================
 
 async function canUseGuardian(member) {
 
@@ -546,7 +543,7 @@ async function canUseGuardian(member) {
         member.id;
 
     // ====================================
-    // ADMINISTRATOR
+    // ADMINISTRATORS
     // ====================================
 
     if (
@@ -563,7 +560,7 @@ async function canUseGuardian(member) {
     // ====================================
 
     if (
-        await database.isUnauthorizedUser(
+        await isUnauthorizedUser(
             guildId,
             userId
         )
@@ -580,14 +577,12 @@ async function canUseGuardian(member) {
         member.roles.cache.values()
     ) {
 
-        if (
-            role.id === guildId
-        ) {
+        if (role.id === guildId) {
             continue;
         }
 
         if (
-            await database.isUnauthorizedRole(
+            await isUnauthorizedRole(
                 guildId,
                 role.id
             )
@@ -601,7 +596,7 @@ async function canUseGuardian(member) {
     // ====================================
 
     if (
-        await database.isAuthorizedUser(
+        await isAuthorizedUser(
             guildId,
             userId
         )
@@ -618,14 +613,12 @@ async function canUseGuardian(member) {
         member.roles.cache.values()
     ) {
 
-        if (
-            role.id === guildId
-        ) {
+        if (role.id === guildId) {
             continue;
         }
 
         if (
-            await database.isAuthorizedRole(
+            await isAuthorizedRole(
                 guildId,
                 role.id
             )
@@ -647,39 +640,43 @@ async function canUseGuardian(member) {
 
 async function setAutoChannelMessage(
     guildId,
-    channelId,
+    channelName,
     message
 ) {
+
     return database.setAutoChannelMessage(
         guildId,
-        channelId,
+        channelName,
         message
     );
 }
 
 async function removeAutoChannelMessage(
     guildId,
-    channelId
+    channelName
 ) {
+
     return database.removeAutoChannelMessage(
         guildId,
-        channelId
+        channelName
     );
 }
 
 async function getAutoChannelMessage(
     guildId,
-    channelId
+    channelName
 ) {
+
     return database.getAutoChannelMessage(
         guildId,
-        channelId
+        channelName
     );
 }
 
 async function getAutoChannelMessages(
     guildId
 ) {
+
     return database.getAutoChannelMessages(
         guildId
     );
@@ -705,11 +702,13 @@ module.exports = {
     isLockedDown,
     getRecentJoinCount,
 
+    // Blocked words
     addBlockedWord,
     removeBlockedWord,
     getBlockedWords,
     findBlockedWord,
 
+    // Users
     authorizeUser,
     unauthorizeUser,
     isAuthorizedUser,
@@ -717,6 +716,7 @@ module.exports = {
     getAuthorizedUsers,
     getUnauthorizedUsers,
 
+    // Roles
     authorizeRole,
     unauthorizeRole,
     isAuthorizedRole,
@@ -724,10 +724,12 @@ module.exports = {
     getAuthorizedRoles,
     getUnauthorizedRoles,
 
+    // Auto messages
     setAutoChannelMessage,
-removeAutoChannelMessage,
-getAutoChannelMessage,
-getAutoChannelMessages,
+    removeAutoChannelMessage,
+    getAutoChannelMessage,
+    getAutoChannelMessages,
 
+    // Access
     canUseGuardian
 };
