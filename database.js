@@ -65,6 +65,110 @@ async function initDatabase() {
             );
         `);
 
+// ========================================
+// NORMALIZE TEXT
+// ========================================
+
+function normalizeForWordFilter(text) {
+
+    return String(text || "")
+        // Converts many stylized Unicode fonts
+        // back into normal characters.
+        .normalize("NFKC")
+
+        // Remove zero-width characters people may
+        // insert between letters to bypass filters.
+        .replace(
+            /[\u200B-\u200D\u2060\uFEFF]/g,
+            ""
+        )
+
+        .toLowerCase();
+}
+
+// ========================================
+// FIND BLOCKED WORD
+// WHOLE WORDS + FONT NORMALIZATION
+// ========================================
+
+async function findBlockedWord(
+    guildId,
+    message
+) {
+
+    if (!databaseReady) {
+        throw new Error(
+            "Database is not ready."
+        );
+    }
+
+    if (
+        !guildId ||
+        !message
+    ) {
+        return null;
+    }
+
+    const words =
+        await getBlockedWords(
+            guildId
+        );
+
+    const content =
+        normalizeForWordFilter(
+            message
+        );
+
+    for (const word of words) {
+
+        const cleanWord =
+            normalizeForWordFilter(
+                word
+            ).trim();
+
+        if (!cleanWord) {
+            continue;
+        }
+
+        // Escape regex characters.
+        const escapedWord =
+            cleanWord.replace(
+                /[.*+?^${}()|[\]\\]/g,
+                "\\$&"
+            );
+
+        /*
+         * Only matches standalone words.
+         *
+         * blocked: ass
+         *
+         * ass        -> MATCH
+         * ASS        -> MATCH
+         * 𝕒𝕤𝕤        -> MATCH
+         * "ass!"     -> MATCH
+         * "an ass"   -> MATCH
+         *
+         * class      -> NO MATCH
+         * grass      -> NO MATCH
+         * assassin   -> NO MATCH
+         */
+
+        const regex =
+            new RegExp(
+                `(?<![\\p{L}\\p{N}_])${escapedWord}(?![\\p{L}\\p{N}_])`,
+                "iu"
+            );
+
+        if (
+            regex.test(content)
+        ) {
+            return cleanWord;
+        }
+    }
+
+    return null;
+}
+        
         // ====================================
         // AUTHORIZED USERS
         // ====================================
