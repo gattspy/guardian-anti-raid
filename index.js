@@ -5,7 +5,8 @@ const express = require("express");
 const {
     Client,
     GatewayIntentBits,
-    EmbedBuilder
+    EmbedBuilder,
+    ChannelType
 } = require("discord.js");
 
 const database = require("./database");
@@ -40,8 +41,11 @@ const {
     getBlockedWords,
     findBlockedWord,
 
-    // AUTO CHANNEL MESSAGES
-    getAutoChannelMessage
+    setAutoCategoryMessage,
+    removeAutoCategoryMessage,
+    getAutoCategoryMessage,
+    getAutoCategoryMessages
+
 } = require("./antiRaid");
 
 const config = require("./config");
@@ -51,17 +55,26 @@ const config = require("./config");
 // ========================================
 
 if (!process.env.DISCORD_TOKEN) {
-    console.error("❌ DISCORD_TOKEN is missing from .env");
+    console.error(
+        "❌ DISCORD_TOKEN is missing from .env"
+    );
+
     process.exit(1);
 }
 
 if (!process.env.CLIENT_ID) {
-    console.error("❌ CLIENT_ID is missing from .env");
+    console.error(
+        "❌ CLIENT_ID is missing from .env"
+    );
+
     process.exit(1);
 }
 
 if (!process.env.DATABASE_URL) {
-    console.error("❌ DATABASE_URL is missing from .env");
+    console.error(
+        "❌ DATABASE_URL is missing from .env"
+    );
+
     process.exit(1);
 }
 
@@ -170,7 +183,6 @@ async function safeReply(
             return;
         }
 
-        // Already replied
         if (interaction.replied) {
 
             await interaction.followUp({
@@ -184,7 +196,6 @@ async function safeReply(
             return;
         }
 
-        // Already deferred
         if (interaction.deferred) {
 
             await interaction.editReply({
@@ -196,7 +207,6 @@ async function safeReply(
             return;
         }
 
-        // Normal reply
         await interaction.reply({
 
             content,
@@ -253,19 +263,8 @@ async function deferInteraction(
             return true;
         }
 
-        /*
-         * IMPORTANT:
-         * Discord only gives the bot about 3 seconds
-         * to acknowledge an interaction.
-         *
-         * We defer immediately before doing
-         * PostgreSQL/database work.
-         */
-
         await interaction.deferReply({
-
             ephemeral: true
-
         });
 
         return true;
@@ -350,7 +349,7 @@ client.once(
         );
 
         console.log(
-            "📨 Automatic channel messages: ENABLED"
+            "📨 Automatic category messages: ENABLED"
         );
 
     }
@@ -370,19 +369,13 @@ client.on(
                 `[JOIN] ${member.user.tag} joined ${member.guild.name}`
             );
 
-            // Ignore bots
             if (member.user.bot) {
                 return;
             }
 
-            // Ignore whitelisted users
             if (isWhitelisted(member)) {
                 return;
             }
-
-            // ====================================
-            // ACCOUNT AGE
-            // ====================================
 
             const suspicious =
                 isSuspiciousAccount(member);
@@ -409,10 +402,6 @@ client.on(
                 return;
             }
 
-            // ====================================
-            // RECORD JOIN
-            // ====================================
-
             const recentJoins =
                 recordJoin(
                     member.guild.id,
@@ -422,10 +411,6 @@ client.on(
             console.log(
                 `[JOIN RATE] ${recentJoins} joins / ${config.raidTimeWindow} seconds`
             );
-
-            // ====================================
-            // RAID DETECTION
-            // ====================================
 
             if (
                 recentJoins >=
@@ -553,10 +538,6 @@ client.on(
                 `[WORD FILTER] ${message.author.tag} used "${blockedWord}"`
             );
 
-            // ====================================
-            // DELETE MESSAGE
-            // ====================================
-
             if (message.deletable) {
 
                 try {
@@ -574,20 +555,12 @@ client.on(
 
             }
 
-            // ====================================
-            // MEMBER
-            // ====================================
-
             const member =
                 message.member;
 
             if (!member) {
                 return;
             }
-
-            // ====================================
-            // TIMEOUT
-            // ====================================
 
             const timeoutDuration =
                 config.wordTimeoutDuration ||
@@ -648,12 +621,6 @@ client.on(
             return;
         }
 
-        /*
-         * CRITICAL:
-         * Acknowledge the interaction FIRST.
-         * Database calls happen AFTER this.
-         */
-
         const deferred =
             await deferInteraction(
                 interaction
@@ -664,10 +631,6 @@ client.on(
         }
 
         try {
-
-            // ====================================
-            // SERVER CHECK
-            // ====================================
 
             if (!interaction.guild) {
 
@@ -682,16 +645,16 @@ client.on(
             const guildId =
                 interaction.guild.id;
 
-            const userId =
-                interaction.user.id;
-
             const admin =
                 isAdministrator(
                     interaction
                 );
 
+            const command =
+                interaction.commandName;
+
             // ====================================
-            // ADMIN-ONLY COMMANDS
+            // ADMIN-ONLY MANAGEMENT COMMANDS
             // ====================================
 
             const adminOnlyCommands = [
@@ -707,30 +670,24 @@ client.on(
 
             if (
                 adminOnlyCommands.includes(
-                    interaction.commandName
-                )
+                    command
+                ) &&
+                !admin
             ) {
 
-                if (!admin) {
+                await safeReply(
+                    interaction,
+                    "❌ **Administrator Only**\nOnly server administrators can use this command."
+                );
 
-                    await safeReply(
-                        interaction,
-                        "❌ **Administrator Only**\nOnly server administrators can use this command."
-                    );
-
-                    return;
-                }
-
+                return;
             }
 
             // ====================================
             // /AUTHORIZE
             // ====================================
 
-            if (
-                interaction.commandName ===
-                "authorize"
-            ) {
+            if (command === "authorize") {
 
                 const user =
                     interaction.options.getUser(
@@ -768,10 +725,7 @@ client.on(
             // /UNAUTHORIZE
             // ====================================
 
-            if (
-                interaction.commandName ===
-                "unauthorize"
-            ) {
+            if (command === "unauthorize") {
 
                 const user =
                     interaction.options.getUser(
@@ -799,7 +753,7 @@ client.on(
 
                     result
                         ? `🚫 ${user} is now unauthorized.`
-                        : `⚠️ ${user} was not authorized.`
+                        : `⚠️ ${user} was already unauthorized.`
                 );
 
                 return;
@@ -810,7 +764,7 @@ client.on(
             // ====================================
 
             if (
-                interaction.commandName ===
+                command ===
                 "authorize-role"
             ) {
 
@@ -851,7 +805,7 @@ client.on(
             // ====================================
 
             if (
-                interaction.commandName ===
+                command ===
                 "unauthorize-role"
             ) {
 
@@ -881,7 +835,7 @@ client.on(
 
                     result
                         ? `🚫 ${role} is now unauthorized.`
-                        : `⚠️ ${role} was not authorized.`
+                        : `⚠️ ${role} was already unauthorized.`
                 );
 
                 return;
@@ -892,7 +846,7 @@ client.on(
             // ====================================
 
             if (
-                interaction.commandName ===
+                command ===
                 "authorized-list"
             ) {
 
@@ -946,7 +900,7 @@ client.on(
             // ====================================
 
             if (
-                interaction.commandName ===
+                command ===
                 "unauthorized-list"
             ) {
 
@@ -996,20 +950,8 @@ client.on(
             }
 
             // ====================================
-            // GUARDIAN ACCESS CONTROL
+            // ACCESS CONTROL
             // ====================================
-
-            /*
-             * IMPORTANT:
-             *
-             * Administrators bypass the authorization
-             * database.
-             *
-             * Everyone else MUST be authorized either
-             * directly or through an authorized role.
-             *
-             * Explicit deny always wins.
-             */
 
             if (!admin) {
 
@@ -1022,7 +964,6 @@ client.on(
 
                     await safeReply(
                         interaction,
-
                         "❌ **Access Denied**\n\nYou are not authorized to use Guardian Anti-Raid."
                     );
 
@@ -1032,11 +973,232 @@ client.on(
             }
 
             // ====================================
+            // /AUTOMESSAGE-SET
+            // ====================================
+
+            if (
+                command ===
+                "automessage-set"
+            ) {
+
+                if (!databaseReady) {
+
+                    await safeReply(
+                        interaction,
+                        "❌ PostgreSQL is not ready."
+                    );
+
+                    return;
+                }
+
+                const category =
+                    interaction.options.getChannel(
+                        "category"
+                    );
+
+                const message =
+                    interaction.options.getString(
+                        "message"
+                    )?.trim();
+
+                if (
+                    !category ||
+                    category.type !==
+                        ChannelType.GuildCategory
+                ) {
+
+                    await safeReply(
+                        interaction,
+                        "❌ Please select a valid Discord category."
+                    );
+
+                    return;
+                }
+
+                if (!message) {
+
+                    await safeReply(
+                        interaction,
+                        "❌ Please provide a message."
+                    );
+
+                    return;
+                }
+
+                if (
+                    message.length >
+                    2000
+                ) {
+
+                    await safeReply(
+                        interaction,
+                        "❌ Automatic messages cannot be longer than 2000 characters."
+                    );
+
+                    return;
+                }
+
+                const result =
+                    await setAutoCategoryMessage(
+                        guildId,
+                        category.id,
+                        message
+                    );
+
+                await safeReply(
+                    interaction,
+
+                    result
+                        ? `✅ **Automatic message configured.**\n\n📁 Category: **${category.name}**\n💬 Message: ${message}\n\nGuardian will send this whenever a new text channel is created inside this category.`
+                        : "❌ Could not save the automatic category message."
+                );
+
+                return;
+            }
+
+            // ====================================
+            // /AUTOMESSAGE-REMOVE
+            // ====================================
+
+            if (
+                command ===
+                "automessage-remove"
+            ) {
+
+                if (!databaseReady) {
+
+                    await safeReply(
+                        interaction,
+                        "❌ PostgreSQL is not ready."
+                    );
+
+                    return;
+                }
+
+                const category =
+                    interaction.options.getChannel(
+                        "category"
+                    );
+
+                if (
+                    !category ||
+                    category.type !==
+                        ChannelType.GuildCategory
+                ) {
+
+                    await safeReply(
+                        interaction,
+                        "❌ Please select a valid Discord category."
+                    );
+
+                    return;
+                }
+
+                const removed =
+                    await removeAutoCategoryMessage(
+                        guildId,
+                        category.id
+                    );
+
+                await safeReply(
+                    interaction,
+
+                    removed
+                        ? `✅ Automatic message removed from **${category.name}**.`
+                        : `⚠️ No automatic message was configured for **${category.name}**.`
+                );
+
+                return;
+            }
+
+            // ====================================
+            // /AUTOMESSAGE-LIST
+            // ====================================
+
+            if (
+                command ===
+                "automessage-list"
+            ) {
+
+                if (!databaseReady) {
+
+                    await safeReply(
+                        interaction,
+                        "❌ PostgreSQL is not ready."
+                    );
+
+                    return;
+                }
+
+                const configs =
+                    await getAutoCategoryMessages(
+                        guildId
+                    );
+
+                if (
+                    !configs ||
+                    configs.length === 0
+                ) {
+
+                    await safeReply(
+                        interaction,
+                        "📋 No automatic category messages are configured."
+                    );
+
+                    return;
+                }
+
+                let output =
+                    "📨 **AUTOMATIC CATEGORY MESSAGES**\n\n";
+
+                for (
+                    const item of configs
+                ) {
+
+                    const category =
+                        interaction.guild.channels.cache.get(
+                            item.category_id
+                        );
+
+                    const categoryName =
+                        category
+                            ? category.name
+                            : `Deleted category (${item.category_id})`;
+
+                    output +=
+                        `📁 **${categoryName}**\n`;
+
+                    output +=
+                        `💬 ${item.message}\n\n`;
+                }
+
+                if (
+                    output.length >
+                    1900
+                ) {
+
+                    output =
+                        output.substring(
+                            0,
+                            1900
+                        ) +
+                        "\n\n...more configurations exist.";
+                }
+
+                await safeReply(
+                    interaction,
+                    output
+                );
+
+                return;
+            }
+
+            // ====================================
             // /LOCKDOWN
             // ====================================
 
             if (
-                interaction.commandName ===
+                command ===
                 "lockdown"
             ) {
 
@@ -1062,7 +1224,7 @@ client.on(
             // ====================================
 
             if (
-                interaction.commandName ===
+                command ===
                 "unlock"
             ) {
 
@@ -1087,7 +1249,7 @@ client.on(
             // ====================================
 
             if (
-                interaction.commandName ===
+                command ===
                 "raidstatus"
             ) {
 
@@ -1108,7 +1270,7 @@ client.on(
             }
 
             // ====================================
-            // DATABASE COMMAND CHECK
+            // WORD COMMAND DATABASE CHECK
             // ====================================
 
             const databaseCommands = [
@@ -1121,7 +1283,7 @@ client.on(
 
             if (
                 databaseCommands.includes(
-                    interaction.commandName
+                    command
                 ) &&
                 !databaseReady
             ) {
@@ -1139,7 +1301,7 @@ client.on(
             // ====================================
 
             if (
-                interaction.commandName ===
+                command ===
                 "word-add"
             ) {
 
@@ -1181,7 +1343,7 @@ client.on(
             // ====================================
 
             if (
-                interaction.commandName ===
+                command ===
                 "word-remove"
             ) {
 
@@ -1223,7 +1385,7 @@ client.on(
             // ====================================
 
             if (
-                interaction.commandName ===
+                command ===
                 "word-list"
             ) {
 
@@ -1280,7 +1442,6 @@ client.on(
 
             await safeReply(
                 interaction,
-
                 "❌ Something went wrong while processing that command."
             );
 
@@ -1291,6 +1452,7 @@ client.on(
 
 // ========================================
 // AUTOMATIC MESSAGE WHEN CHANNEL CREATED
+// INSIDE A CONFIGURED CATEGORY
 // ========================================
 
 client.on(
@@ -1299,7 +1461,6 @@ client.on(
 
         try {
 
-            // Ignore DMs
             if (!channel.guild) {
                 return;
             }
@@ -1314,32 +1475,72 @@ client.on(
             }
 
             // ====================================
-            // GET CONFIGURED MESSAGE
-            // ====================================
-
-            const autoMessage =
-                await getAutoChannelMessage(
-                    channel.guild.id,
-                    channel.id
-                );
-
-            if (!autoMessage) {
-                return;
-            }
-
-            // ====================================
-            // MAKE SURE CHANNEL SUPPORTS MESSAGES
+            // ONLY MESSAGE-CAPABLE CHANNELS
             // ====================================
 
             if (
                 !channel.isTextBased() ||
-                typeof channel.send !== "function"
+                typeof channel.send !==
+                    "function"
             ) {
                 return;
             }
 
             // ====================================
-            // GET BOT MEMBER
+            // GET PARENT CATEGORY
+            // ====================================
+
+            const categoryId =
+                channel.parentId;
+
+            if (!categoryId) {
+
+                console.log(
+                    `[AUTO MESSAGE] #${channel.name} was created outside a category.`
+                );
+
+                return;
+            }
+
+            const category =
+                channel.guild.channels.cache.get(
+                    categoryId
+                );
+
+            if (
+                !category ||
+                category.type !==
+                    ChannelType.GuildCategory
+            ) {
+
+                console.warn(
+                    `[AUTO MESSAGE] Parent category could not be found for #${channel.name}`
+                );
+
+                return;
+            }
+
+            // ====================================
+            // GET CONFIGURED CATEGORY MESSAGE
+            // ====================================
+
+            const autoMessage =
+                await getAutoCategoryMessage(
+                    channel.guild.id,
+                    categoryId
+                );
+
+            if (!autoMessage) {
+
+                console.log(
+                    `[AUTO MESSAGE] No message configured for category "${category.name}".`
+                );
+
+                return;
+            }
+
+            // ====================================
+            // CHECK BOT MEMBER
             // ====================================
 
             const me =
@@ -1363,7 +1564,12 @@ client.on(
 
             if (
                 !permissions ||
-                !permissions.has("SendMessages")
+                !permissions.has(
+                    "ViewChannel"
+                ) ||
+                !permissions.has(
+                    "SendMessages"
+                )
             ) {
 
                 console.warn(
@@ -1385,10 +1591,14 @@ client.on(
                 `[AUTO MESSAGE] ✅ Sent message in #${channel.name}`
             );
 
+            console.log(
+                `[AUTO MESSAGE] 📁 Category: ${category.name}`
+            );
+
         } catch (error) {
 
             console.error(
-                "❌ Auto channel message error:",
+                "❌ Auto category message error:",
                 error
             );
 
@@ -1476,7 +1686,7 @@ async function startBot() {
         );
 
         console.log(
-            "✅ Auto-channel message database ready."
+            "✅ Auto-category message database ready."
         );
 
         console.log(
@@ -1507,9 +1717,7 @@ async function startBot() {
             "❌ BOT STARTUP FAILED"
         );
 
-        console.error(
-            error
-        );
+        console.error(error);
 
         console.error(
             "================================"
