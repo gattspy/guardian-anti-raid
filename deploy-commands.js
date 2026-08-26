@@ -17,6 +17,7 @@ if (!process.env.DISCORD_TOKEN) {
     console.error(
         "❌ DISCORD_TOKEN is missing from .env"
     );
+
     process.exit(1);
 }
 
@@ -24,6 +25,7 @@ if (!process.env.CLIENT_ID) {
     console.error(
         "❌ CLIENT_ID is missing from .env"
     );
+
     process.exit(1);
 }
 
@@ -215,6 +217,39 @@ const commands = [
         .setName("automessage-list")
         .setDescription(
             "Show all configured automatic category messages."
+        ),
+
+    // ====================================
+    // BAN-TRIGGER CHANNEL
+    // ====================================
+
+    new SlashCommandBuilder()
+        .setName("ban-channel-set")
+        .setDescription(
+            "Set a channel where sending a message automatically bans the member."
+        )
+        .addChannelOption(option =>
+            option
+                .setName("channel")
+                .setDescription(
+                    "Channel that will trigger the automatic ban."
+                )
+                .addChannelTypes(
+                    ChannelType.GuildText
+                )
+                .setRequired(true)
+        ),
+
+    new SlashCommandBuilder()
+        .setName("ban-channel-remove")
+        .setDescription(
+            "Disable the automatic ban-trigger channel."
+        ),
+
+    new SlashCommandBuilder()
+        .setName("ban-channel-status")
+        .setDescription(
+            "Show the current automatic ban-trigger channel."
         )
 
 ].map(
@@ -259,12 +294,20 @@ client.once(
             `📡 Found ${client.guilds.cache.size} server(s)`
         );
 
+        console.log(
+            `📋 Preparing ${commands.length} command(s)`
+        );
+
         const rest =
             new REST({
                 version: "10"
             }).setToken(
                 process.env.DISCORD_TOKEN
             );
+
+        // ====================================
+        // REGISTER COMMANDS
+        // ====================================
 
         for (
             const guild of
@@ -294,7 +337,10 @@ client.once(
             } catch (error) {
 
                 console.error(
-                    `❌ Failed to register commands in ${guild.name}:`,
+                    `❌ Failed to register commands in ${guild.name}:`
+                );
+
+                console.error(
                     error
                 );
             }
@@ -317,6 +363,7 @@ client.once(
         );
 
         client.destroy();
+
         process.exit(0);
     }
 );
@@ -348,7 +395,9 @@ client.login(
         "❌ Failed to login to Discord:"
     );
 
-    console.error(error);
+    console.error(
+        error
+    );
 
     process.exit(1);
 });
