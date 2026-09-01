@@ -11,7 +11,8 @@ const {
     ModalBuilder,
     TextInputBuilder,
     TextInputStyle,
-    ActionRowBuilder
+    ActionRowBuilder,
+    MessageFlags
 } = require("discord.js");
 
 const database = require("./database");
@@ -59,7 +60,6 @@ const config = require("./config");
 // ========================================
 
 if (!process.env.DISCORD_TOKEN) {
-
     console.error(
         "❌ DISCORD_TOKEN is missing from .env"
     );
@@ -68,7 +68,6 @@ if (!process.env.DISCORD_TOKEN) {
 }
 
 if (!process.env.CLIENT_ID) {
-
     console.error(
         "❌ CLIENT_ID is missing from .env"
     );
@@ -77,7 +76,6 @@ if (!process.env.CLIENT_ID) {
 }
 
 if (!process.env.DATABASE_URL) {
-
     console.error(
         "❌ DATABASE_URL is missing from .env"
     );
@@ -105,7 +103,6 @@ const PORT =
 // ========================================
 
 const client = new Client({
-
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMembers,
@@ -117,7 +114,6 @@ const client = new Client({
         Partials.Channel,
         Partials.Message
     ]
-
 });
 
 // ========================================
@@ -127,7 +123,6 @@ const client = new Client({
 app.get(
     "/",
     (req, res) => {
-
         res.status(200).send(
             "🛡️ Guardian Anti-Raid is online."
         );
@@ -141,9 +136,7 @@ app.get(
 app.get(
     "/health",
     (req, res) => {
-
         res.status(200).json({
-
             status: "online",
 
             bot:
@@ -155,7 +148,6 @@ app.get(
                 databaseReady
                     ? "online"
                     : "offline"
-
         });
     }
 );
@@ -168,7 +160,6 @@ app.listen(
     PORT,
     "0.0.0.0",
     () => {
-
         console.log(
             `🌐 Web server running on port ${PORT}`
         );
@@ -183,9 +174,7 @@ async function safeReply(
     interaction,
     content
 ) {
-
     try {
-
         if (
             !interaction ||
             !interaction.isRepliable()
@@ -194,17 +183,16 @@ async function safeReply(
         }
 
         if (interaction.replied) {
-
             await interaction.followUp({
                 content,
-                ephemeral: true
+                flags:
+                    MessageFlags.Ephemeral
             });
 
             return;
         }
 
         if (interaction.deferred) {
-
             await interaction.editReply({
                 content
             });
@@ -214,17 +202,16 @@ async function safeReply(
 
         await interaction.reply({
             content,
-            ephemeral: true
+            flags:
+                MessageFlags.Ephemeral
         });
 
     } catch (error) {
-
         if (
             error.code === 10062 ||
             error.code === 40060 ||
             error.code === 10015
         ) {
-
             console.warn(
                 `⚠️ Discord interaction unavailable (${error.code}).`
             );
@@ -246,9 +233,7 @@ async function safeReply(
 async function deferInteraction(
     interaction
 ) {
-
     try {
-
         if (
             !interaction ||
             !interaction.isRepliable()
@@ -264,18 +249,17 @@ async function deferInteraction(
         }
 
         await interaction.deferReply({
-            ephemeral: true
+            flags:
+                MessageFlags.Ephemeral
         });
 
         return true;
 
     } catch (error) {
-
         if (
             error.code === 10062 ||
             error.code === 40060
         ) {
-
             console.warn(
                 `⚠️ Interaction expired or was already acknowledged (${error.code}).`
             );
@@ -299,7 +283,6 @@ async function deferInteraction(
 function isAdministrator(
     interaction
 ) {
-
     return (
         interaction.memberPermissions?.has(
             "Administrator"
@@ -314,7 +297,6 @@ function isAdministrator(
 client.once(
     "ready",
     () => {
-
         console.log(
             "================================"
         );
@@ -350,7 +332,7 @@ client.once(
         );
 
         console.log(
-            "🚫 Whole-word blocked-word filter: ENABLED"
+            "🚫 Smart blocked-word filter: ENABLED"
         );
 
         console.log(
@@ -358,7 +340,11 @@ client.once(
         );
 
         console.log(
-            "🔤 Unicode font normalization: ENABLED"
+            "🔤 Unicode normalization: ENABLED"
+        );
+
+        console.log(
+            "🧠 Similar-spelling detection: ENABLED"
         );
 
         console.log(
@@ -378,19 +364,15 @@ client.once(
 client.on(
     "guildMemberAdd",
     async member => {
-
         try {
-
             console.log(
                 `[JOIN] ${member.user.tag} joined ${member.guild.name}`
             );
 
-            // Ignore bots
             if (member.user.bot) {
                 return;
             }
 
-            // Ignore whitelisted members
             if (isWhitelisted(member)) {
                 return;
             }
@@ -400,15 +382,10 @@ client.on(
                     member
                 );
 
-            // ====================================
-            // KICK ACCOUNTS UNDER 24 HOURS
-            // ====================================
-
             if (
                 suspicious &&
                 config.kickNewAccounts
             ) {
-
                 const kicked =
                     await kickMember(
                         member,
@@ -416,7 +393,6 @@ client.on(
                     );
 
                 if (kicked) {
-
                     console.log(
                         `[PROTECTION] Kicked ${member.user.tag}`
                     );
@@ -424,10 +400,6 @@ client.on(
 
                 return;
             }
-
-            // ====================================
-            // RECORD JOIN
-            // ====================================
 
             const recentJoins =
                 recordJoin(
@@ -439,10 +411,6 @@ client.on(
                 `[JOIN RATE] ${recentJoins} joins / ${config.raidTimeWindow} seconds`
             );
 
-            // ====================================
-            // RAID DETECTION
-            // ====================================
-
             if (
                 recentJoins >=
                     config.raidJoinThreshold &&
@@ -450,7 +418,6 @@ client.on(
                     member.guild.id
                 )
             ) {
-
                 console.log(
                     `[RAID] 🚨 RAID DETECTED in ${member.guild.name}`
                 );
@@ -460,10 +427,6 @@ client.on(
                     `${recentJoins} members joined within ${config.raidTimeWindow} seconds`
                 );
 
-                // ====================================
-                // RAID LOG CHANNEL
-                // ====================================
-
                 const logChannel =
                     member.guild.channels.cache.find(
                         channel =>
@@ -471,8 +434,11 @@ client.on(
                             "raid-logs"
                     );
 
-                if (logChannel) {
-
+                if (
+                    logChannel &&
+                    typeof logChannel.send ===
+                        "function"
+                ) {
                     const embed =
                         new EmbedBuilder()
 
@@ -505,7 +471,6 @@ client.on(
                             .setTimestamp();
 
                     try {
-
                         await logChannel.send({
                             embeds: [
                                 embed
@@ -513,7 +478,6 @@ client.on(
                         });
 
                     } catch (error) {
-
                         console.error(
                             "❌ Could not send raid log:",
                             error.message
@@ -523,7 +487,6 @@ client.on(
             }
 
         } catch (error) {
-
             console.error(
                 "❌ Member join handler error:",
                 error
@@ -536,43 +499,55 @@ client.on(
 // BLOCKED WORD NORMALIZATION
 // ========================================
 
-function normalizeForWordFilter(text) {
+function normalizeForWordFilter(
+    text
+) {
+    let value =
+        String(text || "");
 
-    return String(text || "")
+    if (
+        config.normalizeUnicodeWords !==
+        false
+    ) {
+        value =
+            value
+                .normalize("NFKC")
+                .normalize("NFD")
+                .replace(
+                    /\p{M}/gu,
+                    ""
+                )
+                .normalize("NFC");
+    }
 
-        // Convert stylized Unicode fonts
-        // and full-width characters.
-        .normalize("NFKC")
-
-        // Separate accented characters.
-        .normalize("NFD")
-
-        // Remove accent / combining marks.
-        .replace(
-            /\p{M}/gu,
-            ""
-        )
-
-        .normalize("NFC")
-
-        // Remove zero-width / invisible characters.
+    return value
         .replace(
             /[\u200B-\u200D\u2060\uFEFF]/g,
             ""
         )
-
         .toLowerCase();
 }
 
 // ========================================
-// COMMON BYPASS CHARACTER REPLACEMENTS
+// LOOKALIKE CHARACTERS
 // ========================================
 
-function normalizeLookalikeCharacters(text) {
+function normalizeLookalikeCharacters(
+    text
+) {
+    let value =
+        normalizeForWordFilter(
+            text
+        );
 
-    return normalizeForWordFilter(text)
+    if (
+        config.detectLookalikeCharacters ===
+        false
+    ) {
+        return value;
+    }
 
-        // Common number/symbol substitutions.
+    return value
         .replace(/0/g, "o")
         .replace(/1/g, "i")
         .replace(/!/g, "i")
@@ -586,24 +561,18 @@ function normalizeLookalikeCharacters(text) {
 }
 
 // ========================================
-// REMOVE SEPARATORS
+// REPEATED LETTERS
 // ========================================
 
-function normalizeSeparatedWord(text) {
-
-    return normalizeLookalikeCharacters(
-        text
-    ).replace(
-        /[\s.\-_*~`'"]/g,
-        ""
-    );
-}
-
-// ========================================
-// REDUCE REPEATED LETTERS
-// ========================================
-
-function reduceRepeatedLetters(text) {
+function reduceRepeatedLetters(
+    text
+) {
+    if (
+        config.detectRepeatedLetters ===
+        false
+    ) {
+        return String(text);
+    }
 
     return String(text).replace(
         /(.)\1{2,}/g,
@@ -615,8 +584,9 @@ function reduceRepeatedLetters(text) {
 // ESCAPE REGEX
 // ========================================
 
-function escapeRegExp(text) {
-
+function escapeRegExp(
+    text
+) {
     return String(text).replace(
         /[.*+?^${}()|[\]\\]/g,
         "\\$&"
@@ -625,14 +595,12 @@ function escapeRegExp(text) {
 
 // ========================================
 // LEVENSHTEIN DISTANCE
-// Checks small spelling changes.
 // ========================================
 
 function levenshteinDistance(
     first,
     second
 ) {
-
     const a =
         String(first);
 
@@ -656,7 +624,6 @@ function levenshteinDistance(
         i <= a.length;
         i++
     ) {
-
         matrix[0][i] =
             i;
     }
@@ -666,7 +633,6 @@ function levenshteinDistance(
         j <= b.length;
         j++
     ) {
-
         matrix[j][0] =
             j;
     }
@@ -676,13 +642,11 @@ function levenshteinDistance(
         j <= b.length;
         j++
     ) {
-
         for (
             let i = 1;
             i <= a.length;
             i++
         ) {
-
             const cost =
                 a[i - 1] ===
                 b[j - 1]
@@ -691,11 +655,8 @@ function levenshteinDistance(
 
             matrix[j][i] =
                 Math.min(
-
                     matrix[j][i - 1] + 1,
-
                     matrix[j - 1][i] + 1,
-
                     matrix[j - 1][i - 1] +
                         cost
                 );
@@ -717,6 +678,12 @@ function isSimilarBlockedWord(
     candidate,
     blockedWord
 ) {
+    if (
+        config.fuzzyWordMatching ===
+        false
+    ) {
+        return false;
+    }
 
     const candidateClean =
         reduceRepeatedLetters(
@@ -739,7 +706,6 @@ function isSimilarBlockedWord(
         return false;
     }
 
-    // Exact normalized match.
     if (
         candidateClean ===
         blockedClean
@@ -747,17 +713,41 @@ function isSimilarBlockedWord(
         return true;
     }
 
-    /*
-     * Do NOT fuzzy-match very short words.
-     *
-     * This avoids false positives such as:
-     *
-     * "as" vs "ass"
-     * "bit" vs another 3-letter word
-     */
+    const minimumLength =
+        config.fuzzyMinimumWordLength ??
+        4;
+
     if (
         blockedClean.length <
-        4
+        minimumLength
+    ) {
+        return false;
+    }
+
+    /*
+     * Avoid comparing wildly different
+     * word lengths.
+     */
+    const lengthDifference =
+        Math.abs(
+            candidateClean.length -
+            blockedClean.length
+        );
+
+    const maximumAllowed =
+        blockedClean.length <= 6
+            ? (
+                config.fuzzyShortWordDistance ??
+                1
+            )
+            : (
+                config.fuzzyLongWordDistance ??
+                2
+            );
+
+    if (
+        lengthDifference >
+        maximumAllowed
     ) {
         return false;
     }
@@ -768,34 +758,20 @@ function isSimilarBlockedWord(
             blockedClean
         );
 
-    // 4-6 characters:
-    // allow only one changed letter.
-    if (
-        blockedClean.length <=
-        6
-    ) {
-
-        return (
-            distance <= 1
-        );
-    }
-
-    // 7+ characters:
-    // allow up to two small spelling changes.
     return (
-        distance <= 2
+        distance <=
+        maximumAllowed
     );
 }
 
 // ========================================
-// FIND STANDALONE OR SIMILAR BLOCKED WORD
+// FIND BLOCKED WORD
 // ========================================
 
 async function findStandaloneBlockedWord(
     guildId,
     content
 ) {
-
     if (
         !guildId ||
         !content ||
@@ -821,14 +797,19 @@ async function findStandaloneBlockedWord(
             content
         );
 
-    // ====================================
-    // CHECK EACH BLOCKED WORD
-    // ====================================
+    const lookalikeContent =
+        normalizeLookalikeCharacters(
+            content
+        );
+
+    const repeatedContent =
+        reduceRepeatedLetters(
+            lookalikeContent
+        );
 
     for (
         const storedWord of words
     ) {
-
         const cleanWord =
             normalizeForWordFilter(
                 storedWord
@@ -839,17 +820,14 @@ async function findStandaloneBlockedWord(
         }
 
         // ====================================
-        // 1. NORMAL STANDALONE MATCH
+        // 1. EXACT STANDALONE WORD
         // ====================================
-
-        const escapedWord =
-            escapeRegExp(
-                cleanWord
-            );
 
         const exactRegex =
             new RegExp(
-                `(?<![\\p{L}\\p{N}_])${escapedWord}(?![\\p{L}\\p{N}_])`,
+                `(?<![\\p{L}\\p{N}_])${escapeRegExp(
+                    cleanWord
+                )}(?![\\p{L}\\p{N}_])`,
                 "iu"
             );
 
@@ -858,80 +836,73 @@ async function findStandaloneBlockedWord(
                 normalizedContent
             )
         ) {
-
             return storedWord;
         }
 
         // ====================================
-        // 2. LOOKALIKE CHARACTER MATCH
-        //
-        // sh1t -> shit
-        // sh!t -> shit
+        // 2. LOOKALIKE CHARACTERS
         // ====================================
-
-        const lookalikeContent =
-            normalizeLookalikeCharacters(
-                content
-            );
-
-        const lookalikeWord =
-            normalizeLookalikeCharacters(
-                storedWord
-            );
-
-        const lookalikeRegex =
-            new RegExp(
-                `(?<![\\p{L}\\p{N}_])${escapeRegExp(
-                    lookalikeWord
-                )}(?![\\p{L}\\p{N}_])`,
-                "iu"
-            );
 
         if (
-            lookalikeRegex.test(
-                lookalikeContent
-            )
+            config.detectLookalikeCharacters !==
+            false
         ) {
+            const lookalikeWord =
+                normalizeLookalikeCharacters(
+                    storedWord
+                );
 
-            return storedWord;
+            const lookalikeRegex =
+                new RegExp(
+                    `(?<![\\p{L}\\p{N}_])${escapeRegExp(
+                        lookalikeWord
+                    )}(?![\\p{L}\\p{N}_])`,
+                    "iu"
+                );
+
+            if (
+                lookalikeRegex.test(
+                    lookalikeContent
+                )
+            ) {
+                return storedWord;
+            }
         }
 
         // ====================================
-        // 3. REPEATED LETTER MATCH
-        //
-        // shiiit -> shit
-        // fuuuck -> fuck
+        // 3. REPEATED LETTERS
         // ====================================
-
-        const repeatedContent =
-            reduceRepeatedLetters(
-                lookalikeContent
-            );
-
-        const repeatedWord =
-            reduceRepeatedLetters(
-                lookalikeWord
-            );
-
-        const repeatedRegex =
-            new RegExp(
-                `(?<![\\p{L}\\p{N}_])${escapeRegExp(
-                    repeatedWord
-                )}(?![\\p{L}\\p{N}_])`,
-                "iu"
-            );
 
         if (
-            repeatedRegex.test(
-                repeatedContent
-            )
+            config.detectRepeatedLetters !==
+            false
         ) {
+            const repeatedWord =
+                reduceRepeatedLetters(
+                    normalizeLookalikeCharacters(
+                        storedWord
+                    )
+                );
 
-            return storedWord;
+            const repeatedRegex =
+                new RegExp(
+                    `(?<![\\p{L}\\p{N}_])${escapeRegExp(
+                        repeatedWord
+                    )}(?![\\p{L}\\p{N}_])`,
+                    "iu"
+                );
+
+            if (
+                repeatedRegex.test(
+                    repeatedContent
+                )
+            ) {
+                return storedWord;
+            }
         }
 
         // ====================================
-        // 4. SEPARATED LETTER MATCH
+        // 4. SEPARATED LETTERS
         //
         // s h i t
         // s.h.i.t
@@ -939,15 +910,18 @@ async function findStandaloneBlockedWord(
         // ====================================
 
         if (
-            cleanWord.length >=
-            3
+            config.detectSeparatedWords !==
+                false &&
+            cleanWord.length >= 3
         ) {
+            const normalizedWord =
+                normalizeLookalikeCharacters(
+                    cleanWord
+                );
 
             const letters =
                 Array.from(
-                    normalizeLookalikeCharacters(
-                        cleanWord
-                    )
+                    normalizedWord
                 )
                     .map(
                         letter =>
@@ -956,7 +930,7 @@ async function findStandaloneBlockedWord(
                             )
                     )
                     .join(
-                        `[\\s._*~\`'-]*`
+                        `[\\s._*~\`'"-]*`
                     );
 
             const separatedRegex =
@@ -967,146 +941,39 @@ async function findStandaloneBlockedWord(
 
             if (
                 separatedRegex.test(
-                    normalizedContent
+                    lookalikeContent
                 )
             ) {
-
                 return storedWord;
             }
         }
 
         // ====================================
-        // 5. SMALL SPELLING CHANGES
-        //
-        // Only test individual words so a
-        // substring inside another normal word
-        // does not automatically trigger.
+        // 5. SIMILAR SPELLINGS
         // ====================================
-
-        const messageWords =
-            normalizedContent.match(
-                /[\p{L}\p{N}!@$]+/gu
-            ) || [];
-
-        for (
-            const messageWord of
-            messageWords
-        ) {
-
-            if (
-                isSimilarBlockedWord(
-                    messageWord,
-                    storedWord
-                )
-            ) {
-
-                return storedWord;
-            }
-        }
-    }
-
-    return null;
-}
-
-// ========================================
-// ESCAPE REGEX
-// ========================================
-
-function escapeRegExp(
-    text
-) {
-
-    return String(
-        text
-    ).replace(
-        /[.*+?^${}()|[\]\\]/g,
-        "\\$&"
-    );
-}
-
-// ========================================
-// FIND STANDALONE BLOCKED WORD
-// ========================================
-
-async function findStandaloneBlockedWord(
-    guildId,
-    content
-) {
-
-    if (
-        !guildId ||
-        !content ||
-        !databaseReady
-    ) {
-        return null;
-    }
-
-    const words =
-        await getBlockedWords(
-            guildId
-        );
-
-    if (
-        !Array.isArray(words) ||
-        words.length === 0
-    ) {
-        return null;
-    }
-
-    const normalizedContent =
-        normalizeForWordFilter(
-            content
-        );
-
-    for (
-        const storedWord of words
-    ) {
-
-        const cleanWord =
-            normalizeForWordFilter(
-                storedWord
-            ).trim();
-
-        if (!cleanWord) {
-            continue;
-        }
-
-        const escapedWord =
-            escapeRegExp(
-                cleanWord
-            );
-
-        /*
-         * Standalone word matching only.
-         *
-         * If "ass" is blocked:
-         *
-         * ass          -> BLOCK
-         * ASS          -> BLOCK
-         * an ass!      -> BLOCK
-         * 𝐚𝐬𝐬          -> BLOCK
-         * 𝕒𝕤𝕤          -> BLOCK
-         * ａｓｓ         -> BLOCK
-         *
-         * class        -> ALLOW
-         * grass        -> ALLOW
-         * glasses      -> ALLOW
-         * assassin     -> ALLOW
-         */
-
-        const regex =
-            new RegExp(
-                `(?<![\\p{L}\\p{N}_])${escapedWord}(?![\\p{L}\\p{N}_])`,
-                "iu"
-            );
 
         if (
-            regex.test(
-                normalizedContent
-            )
+            config.fuzzyWordMatching !==
+            false
         ) {
+            const messageWords =
+                normalizedContent.match(
+                    /[\p{L}\p{N}!@$]+/gu
+                ) || [];
 
-            return storedWord;
+            for (
+                const messageWord of
+                messageWords
+            ) {
+                if (
+                    isSimilarBlockedWord(
+                        messageWord,
+                        storedWord
+                    )
+                ) {
+                    return storedWord;
+                }
+            }
         }
     }
 
@@ -1121,13 +988,7 @@ async function checkBlockedWordMessage(
     message,
     source = "new message"
 ) {
-
     try {
-
-        // ====================================
-        // BASIC CHECKS
-        // ====================================
-
         if (
             !message ||
             !message.author
@@ -1151,10 +1012,6 @@ async function checkBlockedWordMessage(
             return;
         }
 
-        // ====================================
-        // CHECK CONTENT
-        // ====================================
-
         const blockedWord =
             await findStandaloneBlockedWord(
                 message.guild.id,
@@ -1166,17 +1023,11 @@ async function checkBlockedWordMessage(
         }
 
         console.log(
-            `[WORD FILTER] ${message.author.tag} used standalone blocked word "${blockedWord}" (${source})`
+            `[WORD FILTER] ${message.author.tag} matched blocked word "${blockedWord}" (${source})`
         );
 
-        // ====================================
-        // DELETE MESSAGE
-        // ====================================
-
         try {
-
             if (message.deletable) {
-
                 await message.delete();
 
                 console.log(
@@ -1184,38 +1035,29 @@ async function checkBlockedWordMessage(
                 );
 
             } else {
-
                 console.warn(
                     `[WORD FILTER] Cannot delete ${source} from ${message.author.tag}`
                 );
             }
 
         } catch (error) {
-
             console.error(
                 "❌ Could not delete blocked-word message:",
                 error.message
             );
         }
 
-        // ====================================
-        // GET MEMBER
-        // ====================================
-
         let member =
             message.member;
 
         if (!member) {
-
             try {
-
                 member =
                     await message.guild.members.fetch(
                         message.author.id
                     );
 
             } catch (error) {
-
                 console.error(
                     "❌ Could not fetch member:",
                     error.message
@@ -1225,20 +1067,11 @@ async function checkBlockedWordMessage(
             }
         }
 
-        // ====================================
-        // TIMEOUT LENGTH
-        // ====================================
-
         const timeoutDuration =
             config.wordTimeoutDuration ||
             24 * 60 * 60 * 1000;
 
-        // ====================================
-        // MODERATION CHECK
-        // ====================================
-
         if (!member.moderatable) {
-
             console.warn(
                 `[WORD FILTER] Cannot timeout ${message.author.tag}.`
             );
@@ -1250,15 +1083,10 @@ async function checkBlockedWordMessage(
             return;
         }
 
-        // ====================================
-        // TIMEOUT MEMBER
-        // ====================================
-
         try {
-
             await member.timeout(
                 timeoutDuration,
-                `Guardian Anti-Raid: used standalone blocked word "${blockedWord}" (${source})`
+                `Guardian Anti-Raid: matched blocked word "${blockedWord}" (${source})`
             );
 
             console.log(
@@ -1268,7 +1096,6 @@ async function checkBlockedWordMessage(
             );
 
         } catch (error) {
-
             console.error(
                 "❌ Could not timeout member:",
                 error.message
@@ -1276,7 +1103,6 @@ async function checkBlockedWordMessage(
         }
 
     } catch (error) {
-
         console.error(
             "❌ Blocked-word moderation error:",
             error
@@ -1292,13 +1118,7 @@ async function checkBlockedWordMessage(
 client.on(
     "messageCreate",
     async message => {
-
         try {
-
-            // ====================================
-            // BASIC CHECKS
-            // ====================================
-
             if (
                 !message ||
                 !message.author
@@ -1318,10 +1138,6 @@ client.on(
                 return;
             }
 
-            // ====================================
-            // CHECK BAN-TRIGGER CHANNEL
-            // ====================================
-
             const banChannelId =
                 await getBanTriggerChannel(
                     message.guild.id
@@ -1332,25 +1148,17 @@ client.on(
                 message.channel.id ===
                     banChannelId
             ) {
-
                 let member =
                     message.member;
 
-                // ====================================
-                // FETCH MEMBER IF NEEDED
-                // ====================================
-
                 if (!member) {
-
                     try {
-
                         member =
                             await message.guild.members.fetch(
                                 message.author.id
                             );
 
                     } catch (error) {
-
                         console.error(
                             "❌ Could not fetch ban-trigger member:",
                             error.message
@@ -1360,15 +1168,10 @@ client.on(
                     }
                 }
 
-                // ====================================
-                // PROTECT SERVER OWNER
-                // ====================================
-
                 if (
                     member.id ===
                     message.guild.ownerId
                 ) {
-
                     console.warn(
                         `[BAN CHANNEL] Server owner ${message.author.tag} triggered the channel. Ignoring.`
                     );
@@ -1376,16 +1179,11 @@ client.on(
                     return;
                 }
 
-                // ====================================
-                // PROTECT ADMINISTRATORS
-                // ====================================
-
                 if (
                     member.permissions.has(
                         "Administrator"
                     )
                 ) {
-
                     console.warn(
                         `[BAN CHANNEL] Administrator ${message.author.tag} triggered the channel. Ignoring.`
                     );
@@ -1393,12 +1191,7 @@ client.on(
                     return;
                 }
 
-                // ====================================
-                // CHECK IF MEMBER CAN BE BANNED
-                // ====================================
-
                 if (!member.bannable) {
-
                     console.warn(
                         `[BAN CHANNEL] Cannot ban ${message.author.tag}.`
                     );
@@ -1410,15 +1203,10 @@ client.on(
                     return;
                 }
 
-                // ====================================
-                // BAN MEMBER
-                // DELETE PREVIOUS 3 HOURS
-                // ====================================
-
                 try {
-
                     await member.ban({
                         deleteMessageSeconds:
+                            config.banDeleteMessageSeconds ||
                             3 * 60 * 60,
 
                         reason:
@@ -1434,7 +1222,6 @@ client.on(
                     );
 
                 } catch (error) {
-
                     console.error(
                         `[BAN CHANNEL] ❌ Could not ban ${message.author.tag}:`,
                         error.message
@@ -1444,17 +1231,12 @@ client.on(
                 return;
             }
 
-            // ====================================
-            // NORMAL BLOCKED-WORD FILTER
-            // ====================================
-
             await checkBlockedWordMessage(
                 message,
                 "new message"
             );
 
         } catch (error) {
-
             console.error(
                 "❌ MessageCreate handler error:",
                 error
@@ -1473,22 +1255,13 @@ client.on(
         oldMessage,
         newMessage
     ) => {
-
         try {
-
-            // ====================================
-            // FETCH PARTIAL MESSAGE
-            // ====================================
-
             if (newMessage.partial) {
-
                 try {
-
                     newMessage =
                         await newMessage.fetch();
 
                 } catch (error) {
-
                     console.error(
                         "❌ Could not fetch edited message:",
                         error.message
@@ -1497,10 +1270,6 @@ client.on(
                     return;
                 }
             }
-
-            // ====================================
-            // BASIC CHECKS
-            // ====================================
 
             if (
                 !newMessage.author ||
@@ -1517,7 +1286,6 @@ client.on(
                 return;
             }
 
-            // Ignore edits where content did not change.
             if (
                 oldMessage?.content ===
                 newMessage.content
@@ -1535,7 +1303,6 @@ client.on(
             );
 
         } catch (error) {
-
             console.error(
                 "❌ Edited-message filter error:",
                 error
@@ -1567,28 +1334,24 @@ client.on(
             }
 
             try {
-
                 if (!interaction.guild) {
-
                     await interaction.reply({
                         content:
                             "❌ Guardian auto-messages can only be configured inside a server.",
-                        ephemeral: true
+
+                        flags:
+                            MessageFlags.Ephemeral
                     });
 
                     return;
                 }
 
-                // ====================================
-                // ACKNOWLEDGE MODAL
-                // ====================================
-
                 await interaction.deferReply({
-                    ephemeral: true
+                    flags:
+                        MessageFlags.Ephemeral
                 });
 
                 if (!databaseReady) {
-
                     await interaction.editReply({
                         content:
                             "❌ PostgreSQL is not ready."
@@ -1605,17 +1368,11 @@ client.on(
                         "Administrator"
                     ) === true;
 
-                // ====================================
-                // ACCESS CHECK
-                // ====================================
-
                 if (!admin) {
-
                     let member =
                         interaction.member;
 
                     if (!member) {
-
                         member =
                             await interaction.guild.members.fetch(
                                 interaction.user.id
@@ -1628,7 +1385,6 @@ client.on(
                         );
 
                     if (!allowed) {
-
                         await interaction.editReply({
                             content:
                                 "❌ **Access Denied**\n\nYou are not authorized to use Guardian Anti-Raid."
@@ -1638,17 +1394,12 @@ client.on(
                     }
                 }
 
-                // ====================================
-                // CATEGORY ID
-                // ====================================
-
                 const categoryId =
                     interaction.customId.substring(
                         "automessage_modal:".length
                     );
 
                 if (!categoryId) {
-
                     await interaction.editReply({
                         content:
                             "❌ Category information was missing."
@@ -1656,10 +1407,6 @@ client.on(
 
                     return;
                 }
-
-                // ====================================
-                // MULTI-LINE MESSAGE
-                // ====================================
 
                 const autoMessage =
                     interaction.fields
@@ -1669,7 +1416,6 @@ client.on(
                         .trim();
 
                 if (!autoMessage) {
-
                     await interaction.editReply({
                         content:
                             "❌ The automatic message cannot be empty."
@@ -1678,22 +1424,21 @@ client.on(
                     return;
                 }
 
+                const maxLength =
+                    config.autoMessageMaxLength ||
+                    2000;
+
                 if (
                     autoMessage.length >
-                    2000
+                    maxLength
                 ) {
-
                     await interaction.editReply({
                         content:
-                            "❌ Automatic messages cannot be longer than 2000 characters."
+                            `❌ Automatic messages cannot be longer than ${maxLength} characters.`
                     });
 
                     return;
                 }
-
-                // ====================================
-                // VERIFY CATEGORY
-                // ====================================
 
                 let category =
                     interaction.guild.channels.cache.get(
@@ -1701,16 +1446,13 @@ client.on(
                     );
 
                 if (!category) {
-
                     try {
-
                         category =
                             await interaction.guild.channels.fetch(
                                 categoryId
                             );
 
                     } catch (error) {
-
                         console.error(
                             "❌ Could not fetch category:",
                             error.message
@@ -1723,7 +1465,6 @@ client.on(
                     category.type !==
                         ChannelType.GuildCategory
                 ) {
-
                     await interaction.editReply({
                         content:
                             "❌ That category could not be found."
@@ -1731,10 +1472,6 @@ client.on(
 
                     return;
                 }
-
-                // ====================================
-                // SAVE TO DATABASE
-                // ====================================
 
                 const saved =
                     await setAutoCategoryMessage(
@@ -1744,7 +1481,6 @@ client.on(
                     );
 
                 if (!saved) {
-
                     await interaction.editReply({
                         content:
                             "❌ Could not save the automatic message."
@@ -1769,16 +1505,13 @@ Guardian will send this message whenever a new text channel is created inside th
                 );
 
             } catch (error) {
-
                 console.error(
                     "❌ Auto-message modal error:",
                     error
                 );
 
                 try {
-
                     if (interaction.deferred) {
-
                         await interaction.editReply({
                             content:
                                 "❌ Something went wrong while saving the automatic message."
@@ -1787,16 +1520,16 @@ Guardian will send this message whenever a new text channel is created inside th
                     } else if (
                         !interaction.replied
                     ) {
-
                         await interaction.reply({
                             content:
                                 "❌ Something went wrong while saving the automatic message.",
-                            ephemeral: true
+
+                            flags:
+                                MessageFlags.Ephemeral
                         });
                     }
 
                 } catch (replyError) {
-
                     console.error(
                         "❌ Could not respond to modal:",
                         replyError.message
@@ -1818,17 +1551,13 @@ Guardian will send this message whenever a new text channel is created inside th
         }
 
         try {
-
-            // ====================================
-            // SERVER CHECK
-            // ====================================
-
             if (!interaction.guild) {
-
                 await interaction.reply({
                     content:
                         "❌ Guardian commands can only be used inside a server.",
-                    ephemeral: true
+
+                    flags:
+                        MessageFlags.Ephemeral
                 });
 
                 return;
@@ -1845,16 +1574,13 @@ Guardian will send this message whenever a new text channel is created inside th
             const command =
                 interaction.commandName;
 
-            // ====================================
-            // DATABASE CHECK
-            // ====================================
-
             if (!databaseReady) {
-
                 await interaction.reply({
                     content:
                         "❌ PostgreSQL is not ready.",
-                    ephemeral: true
+
+                    flags:
+                        MessageFlags.Ephemeral
                 });
 
                 return;
@@ -1863,42 +1589,31 @@ Guardian will send this message whenever a new text channel is created inside th
             // ====================================
             // /AUTOMESSAGE-SET
             //
-            // IMPORTANT:
-            // showModal() must happen before
-            // deferReply().
+            // MUST HAPPEN BEFORE deferReply()
             // ====================================
 
             if (
                 command ===
                 "automessage-set"
             ) {
-
-                // ====================================
-                // ACCESS CHECK
-                // ====================================
-
                 if (!admin) {
-
                     const allowed =
                         await canUseGuardian(
                             interaction.member
                         );
 
                     if (!allowed) {
-
                         await interaction.reply({
                             content:
                                 "❌ **Access Denied**\n\nYou are not authorized to use Guardian Anti-Raid.",
-                            ephemeral: true
+
+                            flags:
+                                MessageFlags.Ephemeral
                         });
 
                         return;
                     }
                 }
-
-                // ====================================
-                // CATEGORY
-                // ====================================
 
                 const category =
                     interaction.options.getChannel(
@@ -1910,19 +1625,16 @@ Guardian will send this message whenever a new text channel is created inside th
                     category.type !==
                         ChannelType.GuildCategory
                 ) {
-
                     await interaction.reply({
                         content:
                             "❌ Please select a valid Discord category.",
-                        ephemeral: true
+
+                        flags:
+                            MessageFlags.Ephemeral
                     });
 
                     return;
                 }
-
-                // ====================================
-                // MULTI-LINE TEXT INPUT
-                // ====================================
 
                 const messageInput =
                     new TextInputBuilder()
@@ -1945,7 +1657,10 @@ Guardian will send this message whenever a new text channel is created inside th
 
                         .setMinLength(1)
 
-                        .setMaxLength(2000)
+                        .setMaxLength(
+                            config.autoMessageMaxLength ||
+                            2000
+                        )
 
                         .setRequired(true);
 
@@ -1954,10 +1669,6 @@ Guardian will send this message whenever a new text channel is created inside th
                         .addComponents(
                             messageInput
                         );
-
-                // ====================================
-                // MODAL
-                // ====================================
 
                 const modal =
                     new ModalBuilder()
@@ -1993,8 +1704,6 @@ Guardian will send this message whenever a new text channel is created inside th
             if (!deferred) {
                 return;
             }
-
-            // Continue your admin-only command section here.
 
   // ====================================
 // ADMIN-ONLY COMMANDS
