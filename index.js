@@ -1,686 +1,9 @@
-require("dotenv").config();
-
-const express = require("express");
-
-const {
-    Client,
-    GatewayIntentBits,
-    EmbedBuilder,
-    ChannelType,
-    Partials,
-    ModalBuilder,
-    TextInputBuilder,
-    TextInputStyle,
-    ActionRowBuilder,
-    MessageFlags
-} = require("discord.js");
-
-const database = require("./database");
-
-const {
-    recordJoin,
-    isSuspiciousAccount,
-    isWhitelisted,
-    kickMember,
-    lockdown,
-    unlock,
-    isLockedDown,
-
-    authorizeUser,
-    unauthorizeUser,
-    getAuthorizedUsers,
-    getUnauthorizedUsers,
-
-    authorizeRole,
-    unauthorizeRole,
-    getAuthorizedRoles,
-    getUnauthorizedRoles,
-
-    canUseGuardian,
-
-    addBlockedWord,
-    removeBlockedWord,
-    getBlockedWords,
-
-    setAutoCategoryMessage,
-    removeAutoCategoryMessage,
-    getAutoCategoryMessage,
-    getAutoCategoryMessages,
-
-    setBanTriggerChannel,
-    removeBanTriggerChannel,
-    getBanTriggerChannel
-
-} = require("./antiRaid");
-
-const config = require("./config");
-
-// ========================================
-// ENVIRONMENT CHECK
-// ========================================
-
-if (!process.env.DISCORD_TOKEN) {
-    console.error(
-        "❌ DISCORD_TOKEN is missing from .env"
-    );
-
-    process.exit(1);
-}
-
-if (!process.env.CLIENT_ID) {
-    console.error(
-        "❌ CLIENT_ID is missing from .env"
-    );
-
-    process.exit(1);
-}
-
-if (!process.env.DATABASE_URL) {
-    console.error(
-        "❌ DATABASE_URL is missing from .env"
-    );
-
-    process.exit(1);
-}
-
-// ========================================
-// DATABASE STATE
-// ========================================
-
-let databaseReady = false;
-
-// ========================================
-// EXPRESS / RENDER
-// ========================================
-
-const app = express();
-
-const PORT =
-    process.env.PORT || 10000;
-
-// ========================================
-// DISCORD CLIENT
-// ========================================
-
-const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
-    ],
-
-    partials: [
-        Partials.Channel,
-        Partials.Message
-    ]
-});
-
-// ========================================
-// HOME
-// ========================================
-
-app.get(
-    "/",
-    (req, res) => {
-        res.status(200).send(
-            "🛡️ Guardian Anti-Raid is online."
-        );
-    }
-);
-
-// ========================================
-// HEALTH
-// ========================================
-
-app.get(
-    "/health",
-    (req, res) => {
-        res.status(200).json({
-            status: "online",
-
-            bot:
-                client.isReady()
-                    ? "online"
-                    : "starting",
-
-            database:
-                databaseReady
-                    ? "online"
-                    : "offline"
-        });
-    }
-);
-
-// ========================================
-// EXPRESS START
-// ========================================
-
-app.listen(
-    PORT,
-    "0.0.0.0",
-    () => {
-        console.log(
-            `🌐 Web server running on port ${PORT}`
-        );
-    }
-);
-
-// ========================================
-// SAFE INTERACTION RESPONSE
-// ========================================
-
-async function safeReply(
-    interaction,
-    content
-) {
-    try {
-        if (
-            !interaction ||
-            !interaction.isRepliable()
-        ) {
-            return;
-        }
-
-        if (interaction.replied) {
-            await interaction.followUp({
-                content,
-                flags:
-                    MessageFlags.Ephemeral
-            });
-
-            return;
-        }
-
-        if (interaction.deferred) {
-            await interaction.editReply({
-                content
-            });
-
-            return;
-        }
-
-        await interaction.reply({
-            content,
-            flags:
-                MessageFlags.Ephemeral
-        });
-
-    } catch (error) {
-        if (
-            error.code === 10062 ||
-            error.code === 40060 ||
-            error.code === 10015
-        ) {
-            console.warn(
-                `⚠️ Discord interaction unavailable (${error.code}).`
-            );
-
-            return;
-        }
-
-        console.error(
-            "❌ Interaction response error:",
-            error
-        );
-    }
-}
-
-// ========================================
-// DEFER INTERACTION
-// ========================================
-
-async function deferInteraction(
-    interaction
-) {
-    try {
-        if (
-            !interaction ||
-            !interaction.isRepliable()
-        ) {
-            return false;
-        }
-
-        if (
-            interaction.replied ||
-            interaction.deferred
-        ) {
-            return true;
-        }
-
-        await interaction.deferReply({
-            flags:
-                MessageFlags.Ephemeral
-        });
-
-        return true;
-
-    } catch (error) {
-        if (
-            error.code === 10062 ||
-            error.code === 40060
-        ) {
-            console.warn(
-                `⚠️ Interaction expired or was already acknowledged (${error.code}).`
-            );
-
-            return false;
-        }
-
-        console.error(
-            "❌ Could not defer interaction:",
-            error
-        );
-
-        return false;
-    }
-}
-
-// ========================================
-// ADMIN CHECK
-// ========================================
-
-function isAdministrator(
-    interaction
-) {
-    return (
-        interaction.memberPermissions?.has(
-            "Administrator"
-        ) === true
-    );
-}
-
-// ========================================
-// BOT READY
-// ========================================
-
-client.once(
-    "ready",
-    () => {
-        console.log(
-            "================================"
-        );
-
-        console.log(
-            "🛡️ GUARDIAN ANTI-RAID ONLINE"
-        );
-
-        console.log(
-            "================================"
-        );
-
-        console.log(
-            `Logged in as ${client.user.tag}`
-        );
-
-        console.log(
-            `Monitoring ${client.guilds.cache.size} server(s)`
-        );
-
-        console.log(
-            "New-account protection: 24 hours"
-        );
-
-        console.log(
-            databaseReady
-                ? "🗄️ PostgreSQL: READY"
-                : "❌ PostgreSQL: NOT READY"
-        );
-
-        console.log(
-            "🔐 Guardian access control: ENABLED"
-        );
-
-        console.log(
-            "🚫 Smart blocked-word filter: ENABLED"
-        );
-
-        console.log(
-            "✏️ Edited-message filter: ENABLED"
-        );
-
-        console.log(
-            "🔤 Unicode normalization: ENABLED"
-        );
-
-        console.log(
-            "🧠 Similar-spelling detection: ENABLED"
-        );
-
-        console.log(
-            "📨 Multi-line category auto-messages: ENABLED"
-        );
-
-        console.log(
-            "🔨 Ban-trigger channel protection: ENABLED"
-        );
-    }
-);
-
-// ========================================
-// MEMBER JOIN
-// ========================================
-
-client.on(
-    "guildMemberAdd",
-    async member => {
-        try {
-            console.log(
-                `[JOIN] ${member.user.tag} joined ${member.guild.name}`
-            );
-
-            if (member.user.bot) {
-                return;
-            }
-
-            if (isWhitelisted(member)) {
-                return;
-            }
-
-            const suspicious =
-                isSuspiciousAccount(
-                    member
-                );
-
-            if (
-                suspicious &&
-                config.kickNewAccounts
-            ) {
-                const kicked =
-                    await kickMember(
-                        member,
-                        "Guardian Anti-Raid: account is less than 24 hours old."
-                    );
-
-                if (kicked) {
-                    console.log(
-                        `[PROTECTION] Kicked ${member.user.tag}`
-                    );
-                }
-
-                return;
-            }
-
-            const recentJoins =
-                recordJoin(
-                    member.guild.id,
-                    member.id
-                );
-
-            console.log(
-                `[JOIN RATE] ${recentJoins} joins / ${config.raidTimeWindow} seconds`
-            );
-
-            if (
-                recentJoins >=
-                    config.raidJoinThreshold &&
-                !isLockedDown(
-                    member.guild.id
-                )
-            ) {
-                console.log(
-                    `[RAID] 🚨 RAID DETECTED in ${member.guild.name}`
-                );
-
-                await lockdown(
-                    member.guild,
-                    `${recentJoins} members joined within ${config.raidTimeWindow} seconds`
-                );
-
-                const logChannel =
-                    member.guild.channels.cache.find(
-                        channel =>
-                            channel.name ===
-                            "raid-logs"
-                    );
-
-                if (
-                    logChannel &&
-                    typeof logChannel.send ===
-                        "function"
-                ) {
-                    const embed =
-                        new EmbedBuilder()
-
-                            .setTitle(
-                                "🚨 RAID DETECTED"
-                            )
-
-                            .setDescription(
-                                "Guardian Anti-Raid detected a rapid increase in members."
-                            )
-
-                            .addFields(
-                                {
-                                    name: "Server",
-                                    value:
-                                        member.guild.name
-                                },
-                                {
-                                    name: "Join Rate",
-                                    value:
-                                        `${recentJoins} joins / ${config.raidTimeWindow} seconds`
-                                },
-                                {
-                                    name: "Action",
-                                    value:
-                                        "🔒 Server lockdown activated"
-                                }
-                            )
-
-                            .setTimestamp();
-
-                    try {
-                        await logChannel.send({
-                            embeds: [
-                                embed
-                            ]
-                        });
-
-                    } catch (error) {
-                        console.error(
-                            "❌ Could not send raid log:",
-                            error.message
-                        );
-                    }
-                }
-            }
-
-        } catch (error) {
-            console.error(
-                "❌ Member join handler error:",
-                error
-            );
-        }
-    }
-);
-
-// ========================================
-// BLOCKED WORD NORMALIZATION
-// ========================================
-
-function normalizeForWordFilter(
-    text
-) {
-    let value =
-        String(text || "");
-
-    if (
-        config.normalizeUnicodeWords !==
-        false
-    ) {
-        value =
-            value
-                .normalize("NFKC")
-                .normalize("NFD")
-                .replace(
-                    /\p{M}/gu,
-                    ""
-                )
-                .normalize("NFC");
-    }
-
-    return value
-        .replace(
-            /[\u200B-\u200D\u2060\uFEFF]/g,
-            ""
-        )
-        .toLowerCase();
-}
-
-// ========================================
-// LOOKALIKE CHARACTERS
-// ========================================
-
-function normalizeLookalikeCharacters(
-    text
-) {
-    let value =
-        normalizeForWordFilter(
-            text
-        );
-
-    if (
-        config.detectLookalikeCharacters ===
-        false
-    ) {
-        return value;
-    }
-
-    return value
-        .replace(/0/g, "o")
-        .replace(/1/g, "i")
-        .replace(/!/g, "i")
-        .replace(/3/g, "e")
-        .replace(/4/g, "a")
-        .replace(/5/g, "s")
-        .replace(/7/g, "t")
-        .replace(/8/g, "b")
-        .replace(/\$/g, "s")
-        .replace(/@/g, "a");
-}
-
-// ========================================
-// REPEATED LETTERS
-// ========================================
-
-function reduceRepeatedLetters(
-    text
-) {
-    if (
-        config.detectRepeatedLetters ===
-        false
-    ) {
-        return String(text);
-    }
-
-    return String(text).replace(
-        /(.)\1{2,}/g,
-        "$1"
-    );
-}
-
-// ========================================
-// ESCAPE REGEX
-// ========================================
-
-function escapeRegExp(
-    text
-) {
-    return String(text).replace(
-        /[.*+?^${}()|[\]\\]/g,
-        "\\$&"
-    );
-}
-
-// ========================================
-// LEVENSHTEIN DISTANCE
-// ========================================
-
-function levenshteinDistance(
-    first,
-    second
-) {
-    const a =
-        String(first);
-
-    const b =
-        String(second);
-
-    const matrix =
-        Array.from(
-            {
-                length:
-                    b.length + 1
-            },
-            () =>
-                new Array(
-                    a.length + 1
-                ).fill(0)
-        );
-
-    for (
-        let i = 0;
-        i <= a.length;
-        i++
-    ) {
-        matrix[0][i] =
-            i;
-    }
-
-    for (
-        let j = 0;
-        j <= b.length;
-        j++
-    ) {
-        matrix[j][0] =
-            j;
-    }
-
-    for (
-        let j = 1;
-        j <= b.length;
-        j++
-    ) {
-        for (
-            let i = 1;
-            i <= a.length;
-            i++
-        ) {
-            const cost =
-                a[i - 1] ===
-                b[j - 1]
-                    ? 0
-                    : 1;
-
-            matrix[j][i] =
-                Math.min(
-                    matrix[j][i - 1] + 1,
-                    matrix[j - 1][i] + 1,
-                    matrix[j - 1][i - 1] +
-                        cost
-                );
-        }
-    }
-
-    return matrix[
-        b.length
-    ][
-        a.length
-    ];
-}
-
-// ========================================
-// FUZZY WORD CHECK
-// ========================================
-
 function isSimilarBlockedWord(
     candidate,
     blockedWord
 ) {
     if (
-        config.fuzzyWordMatching ===
-        false
+        config.fuzzyWordMatching === false
     ) {
         return false;
     }
@@ -690,14 +13,14 @@ function isSimilarBlockedWord(
             normalizeLookalikeCharacters(
                 candidate
             )
-        );
+        ).trim();
 
     const blockedClean =
         reduceRepeatedLetters(
             normalizeLookalikeCharacters(
                 blockedWord
             )
-        );
+        ).trim();
 
     if (
         !candidateClean ||
@@ -706,6 +29,7 @@ function isSimilarBlockedWord(
         return false;
     }
 
+    // Exact normalized match
     if (
         candidateClean ===
         blockedClean
@@ -713,26 +37,26 @@ function isSimilarBlockedWord(
         return true;
     }
 
+    // ========================================
+    // DO NOT FUZZY-MATCH SHORT WORDS
+    // ========================================
+
     const minimumLength =
         config.fuzzyMinimumWordLength ??
-        4;
+        6;
 
     if (
         blockedClean.length <
-        minimumLength
+            minimumLength ||
+        candidateClean.length <
+            minimumLength
     ) {
         return false;
     }
 
-    /*
-     * Avoid comparing wildly different
-     * word lengths.
-     */
-    const lengthDifference =
-        Math.abs(
-            candidateClean.length -
-            blockedClean.length
-        );
+    // ========================================
+    // REQUIRE SIMILAR WORD LENGTH
+    // ========================================
 
     const maximumAllowed =
         blockedClean.length <= 6
@@ -742,8 +66,14 @@ function isSimilarBlockedWord(
             )
             : (
                 config.fuzzyLongWordDistance ??
-                2
+                1
             );
+
+    const lengthDifference =
+        Math.abs(
+            candidateClean.length -
+            blockedClean.length
+        );
 
     if (
         lengthDifference >
@@ -751,6 +81,40 @@ function isSimilarBlockedWord(
     ) {
         return false;
     }
+
+    // ========================================
+    // REQUIRE SAME FIRST CHARACTER
+    // ========================================
+
+    if (
+        config.fuzzyRequireSameFirstCharacter !==
+            false &&
+        candidateClean[0] !==
+            blockedClean[0]
+    ) {
+        return false;
+    }
+
+    // ========================================
+    // REQUIRE SAME LAST CHARACTER
+    // ========================================
+
+    if (
+        config.fuzzyRequireSameLastCharacter !==
+            false &&
+        candidateClean[
+            candidateClean.length - 1
+        ] !==
+            blockedClean[
+                blockedClean.length - 1
+            ]
+    ) {
+        return false;
+    }
+
+    // ========================================
+    // LEVENSHTEIN DISTANCE
+    // ========================================
 
     const distance =
         levenshteinDistance(
@@ -762,352 +126,6 @@ function isSimilarBlockedWord(
         distance <=
         maximumAllowed
     );
-}
-
-// ========================================
-// FIND BLOCKED WORD
-// ========================================
-
-async function findStandaloneBlockedWord(
-    guildId,
-    content
-) {
-    if (
-        !guildId ||
-        !content ||
-        !databaseReady
-    ) {
-        return null;
-    }
-
-    const words =
-        await getBlockedWords(
-            guildId
-        );
-
-    if (
-        !Array.isArray(words) ||
-        words.length === 0
-    ) {
-        return null;
-    }
-
-    const normalizedContent =
-        normalizeForWordFilter(
-            content
-        );
-
-    const lookalikeContent =
-        normalizeLookalikeCharacters(
-            content
-        );
-
-    const repeatedContent =
-        reduceRepeatedLetters(
-            lookalikeContent
-        );
-
-    for (
-        const storedWord of words
-    ) {
-        const cleanWord =
-            normalizeForWordFilter(
-                storedWord
-            ).trim();
-
-        if (!cleanWord) {
-            continue;
-        }
-
-        // ====================================
-        // 1. EXACT STANDALONE WORD
-        // ====================================
-
-        const exactRegex =
-            new RegExp(
-                `(?<![\\p{L}\\p{N}_])${escapeRegExp(
-                    cleanWord
-                )}(?![\\p{L}\\p{N}_])`,
-                "iu"
-            );
-
-        if (
-            exactRegex.test(
-                normalizedContent
-            )
-        ) {
-            return storedWord;
-        }
-
-        // ====================================
-        // 2. LOOKALIKE CHARACTERS
-        // ====================================
-
-        if (
-            config.detectLookalikeCharacters !==
-            false
-        ) {
-            const lookalikeWord =
-                normalizeLookalikeCharacters(
-                    storedWord
-                );
-
-            const lookalikeRegex =
-                new RegExp(
-                    `(?<![\\p{L}\\p{N}_])${escapeRegExp(
-                        lookalikeWord
-                    )}(?![\\p{L}\\p{N}_])`,
-                    "iu"
-                );
-
-            if (
-                lookalikeRegex.test(
-                    lookalikeContent
-                )
-            ) {
-                return storedWord;
-            }
-        }
-
-        // ====================================
-        // 3. REPEATED LETTERS
-        // ====================================
-
-        if (
-            config.detectRepeatedLetters !==
-            false
-        ) {
-            const repeatedWord =
-                reduceRepeatedLetters(
-                    normalizeLookalikeCharacters(
-                        storedWord
-                    )
-                );
-
-            const repeatedRegex =
-                new RegExp(
-                    `(?<![\\p{L}\\p{N}_])${escapeRegExp(
-                        repeatedWord
-                    )}(?![\\p{L}\\p{N}_])`,
-                    "iu"
-                );
-
-            if (
-                repeatedRegex.test(
-                    repeatedContent
-                )
-            ) {
-                return storedWord;
-            }
-        }
-
-        // ====================================
-        // 4. SEPARATED LETTERS
-        //
-        // s h i t
-        // s.h.i.t
-        // s-h-i-t
-        // ====================================
-
-        if (
-            config.detectSeparatedWords !==
-                false &&
-            cleanWord.length >= 3
-        ) {
-            const normalizedWord =
-                normalizeLookalikeCharacters(
-                    cleanWord
-                );
-
-            const letters =
-                Array.from(
-                    normalizedWord
-                )
-                    .map(
-                        letter =>
-                            escapeRegExp(
-                                letter
-                            )
-                    )
-                    .join(
-                        `[\\s._*~\`'"-]*`
-                    );
-
-            const separatedRegex =
-                new RegExp(
-                    `(?<![\\p{L}\\p{N}_])${letters}(?![\\p{L}\\p{N}_])`,
-                    "iu"
-                );
-
-            if (
-                separatedRegex.test(
-                    lookalikeContent
-                )
-            ) {
-                return storedWord;
-            }
-        }
-
-        // ====================================
-        // 5. SIMILAR SPELLINGS
-        // ====================================
-
-        if (
-            config.fuzzyWordMatching !==
-            false
-        ) {
-            const messageWords =
-                normalizedContent.match(
-                    /[\p{L}\p{N}!@$]+/gu
-                ) || [];
-
-            for (
-                const messageWord of
-                messageWords
-            ) {
-                if (
-                    isSimilarBlockedWord(
-                        messageWord,
-                        storedWord
-                    )
-                ) {
-                    return storedWord;
-                }
-            }
-        }
-    }
-
-    return null;
-}
-
-// ========================================
-// BLOCKED WORD MODERATION
-// ========================================
-
-async function checkBlockedWordMessage(
-    message,
-    source = "new message"
-) {
-    try {
-        if (
-            !message ||
-            !message.author
-        ) {
-            return;
-        }
-
-        if (message.author.bot) {
-            return;
-        }
-
-        if (!message.guild) {
-            return;
-        }
-
-        if (!databaseReady) {
-            return;
-        }
-
-        if (!message.content) {
-            return;
-        }
-
-        const blockedWord =
-            await findStandaloneBlockedWord(
-                message.guild.id,
-                message.content
-            );
-
-        if (!blockedWord) {
-            return;
-        }
-
-        console.log(
-            `[WORD FILTER] ${message.author.tag} matched blocked word "${blockedWord}" (${source})`
-        );
-
-        try {
-            if (message.deletable) {
-                await message.delete();
-
-                console.log(
-                    `[WORD FILTER] 🗑️ Deleted ${source} from ${message.author.tag}`
-                );
-
-            } else {
-                console.warn(
-                    `[WORD FILTER] Cannot delete ${source} from ${message.author.tag}`
-                );
-            }
-
-        } catch (error) {
-            console.error(
-                "❌ Could not delete blocked-word message:",
-                error.message
-            );
-        }
-
-        let member =
-            message.member;
-
-        if (!member) {
-            try {
-                member =
-                    await message.guild.members.fetch(
-                        message.author.id
-                    );
-
-            } catch (error) {
-                console.error(
-                    "❌ Could not fetch member:",
-                    error.message
-                );
-
-                return;
-            }
-        }
-
-        const timeoutDuration =
-            config.wordTimeoutDuration ||
-            24 * 60 * 60 * 1000;
-
-        if (!member.moderatable) {
-            console.warn(
-                `[WORD FILTER] Cannot timeout ${message.author.tag}.`
-            );
-
-            console.warn(
-                "[WORD FILTER] Guardian needs Moderate Members and its role must be above the user's highest role."
-            );
-
-            return;
-        }
-
-        try {
-            await member.timeout(
-                timeoutDuration,
-                `Guardian Anti-Raid: matched blocked word "${blockedWord}" (${source})`
-            );
-
-            console.log(
-                `[WORD FILTER] ⏱️ Timed out ${message.author.tag} for ${Math.round(
-                    timeoutDuration / 3600000
-                )} hour(s).`
-            );
-
-        } catch (error) {
-            console.error(
-                "❌ Could not timeout member:",
-                error.message
-            );
-        }
-
-    } catch (error) {
-        console.error(
-            "❌ Blocked-word moderation error:",
-            error
-        );
-    }
 }
 
 // ========================================
