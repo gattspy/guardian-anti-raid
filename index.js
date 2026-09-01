@@ -1134,15 +1134,16 @@ client.on(
 
             if (
                 banChannelId &&
-                message.channel.id ===
-                    banChannelId
+                message.channel.id === banChannelId
             ) {
                 let member =
                     message.member;
 
-                if (
-                    !member
-                ) {
+                // ====================================
+                // FETCH MEMBER IF NEEDED
+                // ====================================
+
+                if (!member) {
                     try {
                         member =
                             await message.guild
@@ -1196,9 +1197,7 @@ client.on(
                 // CHECK BANNABLE
                 // ====================================
 
-                if (
-                    !member.bannable
-                ) {
+                if (!member.bannable) {
                     console.warn(
                         `[BAN CHANNEL] Cannot ban ${message.author.tag}.`
                     );
@@ -1271,19 +1270,16 @@ client.on(
         newMessage
     ) => {
         try {
-
             // ====================================
             // FETCH PARTIAL MESSAGE
             // ====================================
 
             if (newMessage.partial) {
                 try {
-
                     newMessage =
                         await newMessage.fetch();
 
                 } catch (error) {
-
                     console.error(
                         "❌ Could not fetch edited message:",
                         error.message
@@ -1299,30 +1295,10 @@ client.on(
 
             if (
                 !newMessage ||
-                !newMessage.author
-            ) {
-                return;
-            }
-
-            if (
-                newMessage.author.bot
-            ) {
-                return;
-            }
-
-            if (
-                !newMessage.guild
-            ) {
-                return;
-            }
-
-            if (
-                !databaseReady
-            ) {
-                return;
-            }
-
-            if (
+                !newMessage.author ||
+                newMessage.author.bot ||
+                !newMessage.guild ||
+                !databaseReady ||
                 !newMessage.content
             ) {
                 return;
@@ -1339,25 +1315,12 @@ client.on(
                 return;
             }
 
-            console.log(
-                `[WORD FILTER] Checking edited message from ${newMessage.author.tag}`
-            );
-
-            /*
-             * IMPORTANT:
-             *
-             * checkBlockedWordMessage()
-             * performs the confirmed blocked-word
-             * check before deleting or timing
-             * anyone out.
-             */
             await checkBlockedWordMessage(
                 newMessage,
                 "edited message"
             );
 
         } catch (error) {
-
             console.error(
                 "❌ Edited-message filter error:",
                 error
@@ -1373,354 +1336,22 @@ client.on(
 client.on(
     "interactionCreate",
     async interaction => {
-
-        // ====================================
-        // AUTO MESSAGE MODAL SUBMISSION
-        // ====================================
-
-        if (
-            interaction.isModalSubmit()
-        ) {
+        try {
+            // ====================================
+            // ONLY SLASH COMMANDS
+            // ====================================
 
             if (
-                !interaction.customId.startsWith(
-                    "automessage_modal:"
-                )
+                !interaction.isChatInputCommand()
             ) {
                 return;
             }
-
-            try {
-
-                // ====================================
-                // SERVER ONLY
-                // ====================================
-
-                if (
-                    !interaction.guild
-                ) {
-
-                    await interaction.reply({
-                        content:
-                            "❌ Guardian auto-messages can only be configured inside a server.",
-
-                        flags:
-                            MessageFlags.Ephemeral
-                    });
-
-                    return;
-                }
-
-                // ====================================
-                // ACKNOWLEDGE MODAL
-                // ====================================
-
-                await interaction.deferReply({
-                    flags:
-                        MessageFlags.Ephemeral
-                });
-
-                // ====================================
-                // DATABASE CHECK
-                // ====================================
-
-                if (
-                    !databaseReady
-                ) {
-
-                    await interaction.editReply({
-                        content:
-                            "❌ PostgreSQL is not ready."
-                    });
-
-                    return;
-                }
-
-                const guildId =
-                    interaction.guild.id;
-
-                const admin =
-                    interaction.memberPermissions?.has(
-                        "Administrator"
-                    ) === true;
-
-                // ====================================
-                // AUTHORIZATION CHECK
-                // ====================================
-
-                if (
-                    !admin
-                ) {
-
-                    let member =
-                        interaction.member;
-
-                    /*
-                     * interaction.member may not always
-                     * be a full GuildMember object.
-                     *
-                     * Fetch the member if roles.cache
-                     * is unavailable.
-                     */
-                    if (
-                        !member ||
-                        typeof member.roles?.cache ===
-                            "undefined"
-                    ) {
-
-                        try {
-
-                            member =
-                                await interaction.guild
-                                    .members
-                                    .fetch(
-                                        interaction.user.id
-                                    );
-
-                        } catch (error) {
-
-                            console.error(
-                                "❌ Could not fetch modal member:",
-                                error.message
-                            );
-
-                            await interaction.editReply({
-                                content:
-                                    "❌ Could not verify your Guardian permissions."
-                            });
-
-                            return;
-                        }
-                    }
-
-                    const allowed =
-                        await canUseGuardian(
-                            member
-                        );
-
-                    if (
-                        !allowed
-                    ) {
-
-                        await interaction.editReply({
-                            content:
-                                "❌ **Access Denied**\n\nYou are not authorized to use Guardian Anti-Raid."
-                        });
-
-                        return;
-                    }
-                }
-
-                // ====================================
-                // CATEGORY ID
-                // ====================================
-
-                const categoryId =
-                    interaction.customId.substring(
-                        "automessage_modal:".length
-                    );
-
-                if (
-                    !categoryId
-                ) {
-
-                    await interaction.editReply({
-                        content:
-                            "❌ Category information was missing."
-                    });
-
-                    return;
-                }
-
-                // ====================================
-                // MESSAGE CONTENT
-                // ====================================
-
-                const autoMessage =
-                    interaction.fields
-                        .getTextInputValue(
-                            "automessage_text"
-                        )
-                        .trim();
-
-                if (
-                    !autoMessage
-                ) {
-
-                    await interaction.editReply({
-                        content:
-                            "❌ The automatic message cannot be empty."
-                    });
-
-                    return;
-                }
-
-                const maxLength =
-                    config.autoMessageMaxLength ??
-                    2000;
-
-                if (
-                    autoMessage.length >
-                    maxLength
-                ) {
-
-                    await interaction.editReply({
-                        content:
-                            `❌ Automatic messages cannot be longer than ${maxLength} characters.`
-                    });
-
-                    return;
-                }
-
-                // ====================================
-                // GET CATEGORY
-                // ====================================
-
-                let category =
-                    interaction.guild
-                        .channels
-                        .cache
-                        .get(
-                            categoryId
-                        );
-
-                if (
-                    !category
-                ) {
-
-                    try {
-
-                        category =
-                            await interaction.guild
-                                .channels
-                                .fetch(
-                                    categoryId
-                                );
-
-                    } catch (error) {
-
-                        console.error(
-                            "❌ Could not fetch category:",
-                            error.message
-                        );
-                    }
-                }
-
-                if (
-                    !category ||
-                    category.type !==
-                        ChannelType.GuildCategory
-                ) {
-
-                    await interaction.editReply({
-                        content:
-                            "❌ That category could not be found."
-                    });
-
-                    return;
-                }
-
-                // ====================================
-                // SAVE AUTO MESSAGE
-                // ====================================
-
-                const saved =
-                    await setAutoCategoryMessage(
-                        guildId,
-                        categoryId,
-                        autoMessage
-                    );
-
-                if (
-                    !saved
-                ) {
-
-                    await interaction.editReply({
-                        content:
-                            "❌ Could not save the automatic message."
-                    });
-
-                    return;
-                }
-
-                await interaction.editReply({
-                    content:
-                        `✅ **Automatic message saved.**
-
-📁 Category: **${category.name}**
-
-Your line breaks and formatting were saved.
-
-Guardian will send this message whenever a new text channel is created inside this category.`
-                });
-
-                console.log(
-                    `[AUTO MESSAGE] ✅ Saved multi-line message for "${category.name}"`
-                );
-
-            } catch (error) {
-
-                console.error(
-                    "❌ Auto-message modal error:",
-                    error
-                );
-
-                try {
-
-                    if (
-                        interaction.deferred
-                    ) {
-
-                        await interaction.editReply({
-                            content:
-                                "❌ Something went wrong while saving the automatic message."
-                        });
-
-                    } else if (
-                        !interaction.replied
-                    ) {
-
-                        await interaction.reply({
-                            content:
-                                "❌ Something went wrong while saving the automatic message.",
-
-                            flags:
-                                MessageFlags.Ephemeral
-                        });
-                    }
-
-                } catch (replyError) {
-
-                    console.error(
-                        "❌ Could not respond to modal:",
-                        replyError.message
-                    );
-                }
-            }
-
-            return;
-        }
-
-        // ====================================
-        // ONLY SLASH COMMANDS
-        // ====================================
-
-        if (
-            !interaction.isChatInputCommand()
-        ) {
-            return;
-        }
-
-        try {
 
             // ====================================
             // SERVER ONLY
             // ====================================
 
-            if (
-                !interaction.guild
-            ) {
-
+            if (!interaction.guild) {
                 await interaction.reply({
                     content:
                         "❌ Guardian commands can only be used inside a server.",
@@ -1732,25 +1363,11 @@ Guardian will send this message whenever a new text channel is created inside th
                 return;
             }
 
-            const guildId =
-                interaction.guild.id;
-
-            const admin =
-                isAdministrator(
-                    interaction
-                );
-
-            const command =
-                interaction.commandName;
-
             // ====================================
             // DATABASE CHECK
             // ====================================
 
-            if (
-                !databaseReady
-            ) {
-
+            if (!databaseReady) {
                 await interaction.reply({
                     content:
                         "❌ PostgreSQL is not ready.",
@@ -1762,175 +1379,19 @@ Guardian will send this message whenever a new text channel is created inside th
                 return;
             }
 
-            // ====================================
-            // /AUTOMESSAGE-SET
-            //
-            // MUST RUN BEFORE deferReply()
-            // ====================================
+            const guildId =
+                interaction.guild.id;
 
-            if (
-                command ===
-                "automessage-set"
-            ) {
+            const command =
+                interaction.commandName;
 
-                // ====================================
-                // AUTHORIZATION
-                // ====================================
-
-                if (
-                    !admin
-                ) {
-
-                    let member =
-                        interaction.member;
-
-                    if (
-                        !member ||
-                        typeof member.roles?.cache ===
-                            "undefined"
-                    ) {
-
-                        try {
-
-                            member =
-                                await interaction.guild
-                                    .members
-                                    .fetch(
-                                        interaction.user.id
-                                    );
-
-                        } catch (error) {
-
-                            console.error(
-                                "❌ Could not fetch command member:",
-                                error.message
-                            );
-
-                            await interaction.reply({
-                                content:
-                                    "❌ Could not verify your Guardian permissions.",
-
-                                flags:
-                                    MessageFlags.Ephemeral
-                            });
-
-                            return;
-                        }
-                    }
-
-                    const allowed =
-                        await canUseGuardian(
-                            member
-                        );
-
-                    if (
-                        !allowed
-                    ) {
-
-                        await interaction.reply({
-                            content:
-                                "❌ **Access Denied**\n\nYou are not authorized to use Guardian Anti-Raid.",
-
-                            flags:
-                                MessageFlags.Ephemeral
-                        });
-
-                        return;
-                    }
-                }
-
-                // ====================================
-                // CATEGORY
-                // ====================================
-
-                const category =
-                    interaction.options.getChannel(
-                        "category"
-                    );
-
-                if (
-                    !category ||
-                    category.type !==
-                        ChannelType.GuildCategory
-                ) {
-
-                    await interaction.reply({
-                        content:
-                            "❌ Please select a valid Discord category.",
-
-                        flags:
-                            MessageFlags.Ephemeral
-                    });
-
-                    return;
-                }
-
-                // ====================================
-                // MESSAGE INPUT
-                // ====================================
-
-                const messageInput =
-                    new TextInputBuilder()
-
-                        .setCustomId(
-                            "automessage_text"
-                        )
-
-                        .setLabel(
-                            "Automatic message"
-                        )
-
-                        .setStyle(
-                            TextInputStyle.Paragraph
-                        )
-
-                        .setPlaceholder(
-                            "Type your message here. Press Enter to create new lines."
-                        )
-
-                        .setMinLength(
-                            1
-                        )
-
-                        .setMaxLength(
-                            config.autoMessageMaxLength ??
-                            2000
-                        )
-
-                        .setRequired(
-                            true
-                        );
-
-                const row =
-                    new ActionRowBuilder()
-                        .addComponents(
-                            messageInput
-                        );
-
-                const modal =
-                    new ModalBuilder()
-
-                        .setCustomId(
-                            `automessage_modal:${category.id}`
-                        )
-
-                        .setTitle(
-                            "Automatic Channel Message"
-                        )
-
-                        .addComponents(
-                            row
-                        );
-
-                await interaction.showModal(
-                    modal
+            const admin =
+                isAdministrator(
+                    interaction
                 );
 
-                return;
-            }
-
             // ====================================
-            // DEFER ALL OTHER COMMANDS
+            // DEFER COMMAND
             // ====================================
 
             const deferred =
@@ -1938,14 +1399,12 @@ Guardian will send this message whenever a new text channel is created inside th
                     interaction
                 );
 
-            if (
-                !deferred
-            ) {
+            if (!deferred) {
                 return;
             }
 
             // ====================================
-            // ADMIN-ONLY COMMANDS
+            // ADMIN-ONLY COMMAND CHECK
             // ====================================
 
             const adminOnlyCommands = [
@@ -1966,7 +1425,6 @@ Guardian will send this message whenever a new text channel is created inside th
                 ) &&
                 !admin
             ) {
-
                 await safeReply(
                     interaction,
                     "❌ **Administrator Only**\nOnly server administrators can use this command."
@@ -1974,6 +1432,929 @@ Guardian will send this message whenever a new text channel is created inside th
 
                 return;
             }
+
+            // ====================================
+            // /AUTHORIZE
+            // ====================================
+
+            if (
+                command ===
+                "authorize"
+            ) {
+                const user =
+                    interaction.options.getUser(
+                        "user"
+                    );
+
+                if (!user) {
+                    await safeReply(
+                        interaction,
+                        "❌ Please select a user."
+                    );
+
+                    return;
+                }
+
+                if (user.bot) {
+                    await safeReply(
+                        interaction,
+                        "❌ You cannot authorize a bot account."
+                    );
+
+                    return;
+                }
+
+                const result =
+                    await authorizeUser(
+                        guildId,
+                        user.id
+                    );
+
+                await safeReply(
+                    interaction,
+                    result
+                        ? `✅ ${user} is now authorized to use Guardian.`
+                        : `⚠️ ${user} is already authorized.`
+                );
+
+                return;
+            }
+
+            // ====================================
+            // /UNAUTHORIZE
+            // ====================================
+
+            if (
+                command ===
+                "unauthorize"
+            ) {
+                const user =
+                    interaction.options.getUser(
+                        "user"
+                    );
+
+                if (!user) {
+                    await safeReply(
+                        interaction,
+                        "❌ Please select a user."
+                    );
+
+                    return;
+                }
+
+                if (user.bot) {
+                    await safeReply(
+                        interaction,
+                        "❌ You cannot modify Guardian authorization for a bot account."
+                    );
+
+                    return;
+                }
+
+                const result =
+                    await unauthorizeUser(
+                        guildId,
+                        user.id
+                    );
+
+                await safeReply(
+                    interaction,
+                    result
+                        ? `🚫 ${user} is now unauthorized.`
+                        : `⚠️ ${user} was already unauthorized.`
+                );
+
+                return;
+            }
+
+            // ====================================
+            // /AUTHORIZE-ROLE
+            // ====================================
+
+            if (
+                command ===
+                "authorize-role"
+            ) {
+                const role =
+                    interaction.options.getRole(
+                        "role"
+                    );
+
+                if (!role) {
+                    await safeReply(
+                        interaction,
+                        "❌ Please select a role."
+                    );
+
+                    return;
+                }
+
+                if (
+                    role.id ===
+                    interaction.guild.id
+                ) {
+                    await safeReply(
+                        interaction,
+                        "❌ You cannot authorize the @everyone role."
+                    );
+
+                    return;
+                }
+
+                const result =
+                    await authorizeRole(
+                        guildId,
+                        role.id
+                    );
+
+                await safeReply(
+                    interaction,
+                    result
+                        ? `✅ ${role} is now authorized to use Guardian.`
+                        : `⚠️ ${role} is already authorized.`
+                );
+
+                return;
+            }
+
+            // ====================================
+            // /UNAUTHORIZE-ROLE
+            // ====================================
+
+            if (
+                command ===
+                "unauthorize-role"
+            ) {
+                const role =
+                    interaction.options.getRole(
+                        "role"
+                    );
+
+                if (!role) {
+                    await safeReply(
+                        interaction,
+                        "❌ Please select a role."
+                    );
+
+                    return;
+                }
+
+                if (
+                    role.id ===
+                    interaction.guild.id
+                ) {
+                    await safeReply(
+                        interaction,
+                        "❌ You cannot modify Guardian authorization for the @everyone role."
+                    );
+
+                    return;
+                }
+
+                const result =
+                    await unauthorizeRole(
+                        guildId,
+                        role.id
+                    );
+
+                await safeReply(
+                    interaction,
+                    result
+                        ? `🚫 ${role} is now unauthorized.`
+                        : `⚠️ ${role} was already unauthorized.`
+                );
+
+                return;
+            }
+
+            // ====================================
+            // /AUTHORIZED-LIST
+            // ====================================
+
+            if (
+                command ===
+                "authorized-list"
+            ) {
+                const users =
+                    await getAuthorizedUsers(
+                        guildId
+                    );
+
+                const roles =
+                    await getAuthorizedRoles(
+                        guildId
+                    );
+
+                let output =
+                    "🛡️ **AUTHORIZED GUARDIAN ACCESS**\n\n";
+
+                output +=
+                    "**Users:**\n";
+
+                output +=
+                    Array.isArray(users) &&
+                    users.length
+                        ? users
+                            .map(
+                                id =>
+                                    `• <@${id}>`
+                            )
+                            .join("\n")
+                        : "• None";
+
+                output +=
+                    "\n\n**Roles:**\n";
+
+                output +=
+                    Array.isArray(roles) &&
+                    roles.length
+                        ? roles
+                            .map(
+                                id =>
+                                    `• <@&${id}>`
+                            )
+                            .join("\n")
+                        : "• None";
+
+                await safeReply(
+                    interaction,
+                    output.slice(
+                        0,
+                        1900
+                    )
+                );
+
+                return;
+            }
+
+            // ====================================
+            // /UNAUTHORIZED-LIST
+            // ====================================
+
+            if (
+                command ===
+                "unauthorized-list"
+            ) {
+                const users =
+                    await getUnauthorizedUsers(
+                        guildId
+                    );
+
+                const roles =
+                    await getUnauthorizedRoles(
+                        guildId
+                    );
+
+                let output =
+                    "🚫 **UNAUTHORIZED GUARDIAN ACCESS**\n\n";
+
+                output +=
+                    "**Users:**\n";
+
+                output +=
+                    Array.isArray(users) &&
+                    users.length
+                        ? users
+                            .map(
+                                id =>
+                                    `• <@${id}>`
+                            )
+                            .join("\n")
+                        : "• None";
+
+                output +=
+                    "\n\n**Roles:**\n";
+
+                output +=
+                    Array.isArray(roles) &&
+                    roles.length
+                        ? roles
+                            .map(
+                                id =>
+                                    `• <@&${id}>`
+                            )
+                            .join("\n")
+                        : "• None";
+
+                await safeReply(
+                    interaction,
+                    output.slice(
+                        0,
+                        1900
+                    )
+                );
+
+                return;
+            }
+
+            // ====================================
+            // ACCESS CONTROL
+            // ====================================
+
+            if (!admin) {
+                let member =
+                    interaction.member;
+
+                if (
+                    !member ||
+                    typeof member.roles?.cache ===
+                        "undefined"
+                ) {
+                    try {
+                        member =
+                            await interaction.guild
+                                .members
+                                .fetch(
+                                    interaction.user.id
+                                );
+
+                    } catch (error) {
+                        console.error(
+                            "❌ Could not fetch Guardian command member:",
+                            error.message
+                        );
+
+                        await safeReply(
+                            interaction,
+                            "❌ Could not verify your Guardian permissions."
+                        );
+
+                        return;
+                    }
+                }
+
+                const allowed =
+                    await canUseGuardian(
+                        member
+                    );
+
+                if (!allowed) {
+                    await safeReply(
+                        interaction,
+                        "❌ **Access Denied**\n\nYou are not authorized to use Guardian Anti-Raid."
+                    );
+
+                    return;
+                }
+            }
+
+            // ====================================
+            // /BAN-CHANNEL-SET
+            // ====================================
+
+            if (
+                command ===
+                "ban-channel-set"
+            ) {
+                const channel =
+                    interaction.options.getChannel(
+                        "channel"
+                    );
+
+                if (
+                    !channel ||
+                    channel.type !==
+                        ChannelType.GuildText
+                ) {
+                    await safeReply(
+                        interaction,
+                        "❌ Please select a normal text channel."
+                    );
+
+                    return;
+                }
+
+                const saved =
+                    await setBanTriggerChannel(
+                        guildId,
+                        channel.id
+                    );
+
+                if (!saved) {
+                    await safeReply(
+                        interaction,
+                        "❌ Could not save the ban-trigger channel."
+                    );
+
+                    return;
+                }
+
+                await safeReply(
+                    interaction,
+                    `✅ **BAN-TRIGGER CHANNEL ENABLED**
+
+Channel: ${channel}
+
+🔨 Anyone who sends a message there will be banned.
+🗑️ Up to the previous 3 hours of their messages will be requested for deletion.
+👑 Server owner: Protected
+🛡️ Administrators: Protected`
+                );
+
+                return;
+            }
+
+            // ====================================
+            // /BAN-CHANNEL-REMOVE
+            // ====================================
+
+            if (
+                command ===
+                "ban-channel-remove"
+            ) {
+                const removed =
+                    await removeBanTriggerChannel(
+                        guildId
+                    );
+
+                await safeReply(
+                    interaction,
+                    removed
+                        ? "✅ Ban-trigger channel disabled."
+                        : "⚠️ No ban-trigger channel was configured."
+                );
+
+                return;
+            }
+
+            // ====================================
+            // /BAN-CHANNEL-STATUS
+            // ====================================
+
+            if (
+                command ===
+                "ban-channel-status"
+            ) {
+                const channelId =
+                    await getBanTriggerChannel(
+                        guildId
+                    );
+
+                if (!channelId) {
+                    await safeReply(
+                        interaction,
+                        "🟢 No ban-trigger channel is configured."
+                    );
+
+                    return;
+                }
+
+                let channel =
+                    interaction.guild
+                        .channels
+                        .cache
+                        .get(
+                            channelId
+                        );
+
+                if (!channel) {
+                    try {
+                        channel =
+                            await interaction.guild
+                                .channels
+                                .fetch(
+                                    channelId
+                                );
+
+                    } catch (error) {
+                        console.error(
+                            "❌ Could not fetch saved ban-trigger channel:",
+                            error.message
+                        );
+
+                        channel =
+                            null;
+                    }
+                }
+
+                if (!channel) {
+                    await safeReply(
+                        interaction,
+                        `⚠️ A ban-trigger channel is saved, but that channel could not be found.
+
+Stored channel ID:
+\`${channelId}\`
+
+Use \`/ban-channel-remove\` to clear it.`
+                    );
+
+                    return;
+                }
+
+                await safeReply(
+                    interaction,
+                    `🚨 **BAN-TRIGGER CHANNEL ACTIVE**
+
+Channel: ${channel}
+
+🔨 Action: Ban member
+🗑️ Deletes up to the previous 3 hours of messages
+👑 Server owner: Protected
+🛡️ Administrators: Protected`
+                );
+
+                return;
+            }
+
+            // ====================================
+            // /AUTOMESSAGE-REMOVE
+            // ====================================
+
+            if (
+                command ===
+                "automessage-remove"
+            ) {
+                const category =
+                    interaction.options.getChannel(
+                        "category"
+                    );
+
+                if (
+                    !category ||
+                    category.type !==
+                        ChannelType.GuildCategory
+                ) {
+                    await safeReply(
+                        interaction,
+                        "❌ Please select a valid Discord category."
+                    );
+
+                    return;
+                }
+
+                const removed =
+                    await removeAutoCategoryMessage(
+                        guildId,
+                        category.id
+                    );
+
+                await safeReply(
+                    interaction,
+                    removed
+                        ? `✅ Automatic message removed from **${category.name}**.`
+                        : `⚠️ No automatic message was configured for **${category.name}**.`
+                );
+
+                return;
+            }
+
+            // ====================================
+            // /AUTOMESSAGE-LIST
+            // ====================================
+
+            if (
+                command ===
+                "automessage-list"
+            ) {
+                const configs =
+                    await getAutoCategoryMessages(
+                        guildId
+                    );
+
+                if (
+                    !Array.isArray(configs) ||
+                    configs.length === 0
+                ) {
+                    await safeReply(
+                        interaction,
+                        "📋 No automatic category messages are configured."
+                    );
+
+                    return;
+                }
+
+                let output =
+                    "📨 **AUTOMATIC CATEGORY MESSAGES**\n\n";
+
+                for (
+                    const item of configs
+                ) {
+                    const category =
+                        interaction.guild
+                            .channels
+                            .cache
+                            .get(
+                                item.category_id
+                            );
+
+                    const categoryName =
+                        category
+                            ? category.name
+                            : `Deleted category (${item.category_id})`;
+
+                    const messageText =
+                        item.message ??
+                        item.message_text ??
+                        "";
+
+                    const section =
+                        `📁 **${categoryName}**\n` +
+                        `💬 Message:\n${messageText}\n\n`;
+
+                    if (
+                        output.length +
+                            section.length >
+                        1850
+                    ) {
+                        output +=
+                            "\n...more configurations exist.";
+
+                        break;
+                    }
+
+                    output +=
+                        section;
+                }
+
+                await safeReply(
+                    interaction,
+                    output
+                );
+
+                return;
+            }
+
+            // ====================================
+            // UNKNOWN COMMAND
+            // ====================================
+
+            await safeReply(
+                interaction,
+                "❌ Unknown Guardian command."
+            );
+
+        } catch (error) {
+            console.error(
+                "❌ Interaction command error:",
+                error
+            );
+
+            await safeReply(
+                interaction,
+                "❌ Something went wrong while processing that command."
+            );
+        }
+    }
+);
+
+// ====================================
+// /LOCKDOWN
+// ====================================
+
+if (
+    command ===
+    "lockdown"
+) {
+    const activated =
+        await lockdown(
+            interaction.guild,
+            `Manual lockdown by ${interaction.user.tag}`
+        );
+
+    await safeReply(
+        interaction,
+        activated
+            ? "🔒 **SERVER LOCKDOWN ACTIVATED**"
+            : "⚠️ Server lockdown is already active."
+    );
+
+    return;
+}
+
+// ====================================
+// /UNLOCK
+// ====================================
+
+if (
+    command ===
+    "unlock"
+) {
+    const unlocked =
+        await unlock(
+            interaction.guild
+        );
+
+    await safeReply(
+        interaction,
+        unlocked
+            ? "🔓 **SERVER LOCKDOWN REMOVED**"
+            : "🟢 Server was not locked down."
+    );
+
+    return;
+}
+
+// ====================================
+// /RAIDSTATUS
+// ====================================
+
+if (
+    command ===
+    "raidstatus"
+) {
+    const locked =
+        isLockedDown(
+            guildId
+        );
+
+    await safeReply(
+        interaction,
+        locked
+            ? "🚨 **RAID LOCKDOWN ACTIVE**"
+            : "🟢 **NO RAID LOCKDOWN ACTIVE**"
+    );
+
+    return;
+}
+
+// ====================================
+// /WORD-ADD
+// ====================================
+
+if (
+    command ===
+    "word-add"
+) {
+    const input =
+        interaction.options.getString(
+            "word"
+        );
+
+    if (
+        typeof input !==
+            "string" ||
+        !input.trim()
+    ) {
+        await safeReply(
+            interaction,
+            "❌ You must provide a word."
+        );
+
+        return;
+    }
+
+    const word =
+        input.trim();
+
+    if (
+        word.length >
+        (
+            config.blockedWordMaxLength ??
+            100
+        )
+    ) {
+        await safeReply(
+            interaction,
+            `❌ Blocked words cannot be longer than ${
+                config.blockedWordMaxLength ??
+                100
+            } characters.`
+        );
+
+        return;
+    }
+
+    const added =
+        await addBlockedWord(
+            guildId,
+            word
+        );
+
+    await safeReply(
+        interaction,
+        added
+            ? `✅ **${word}** was added to the blocked-word database.`
+            : `⚠️ **${word}** is already blocked or could not be added.`
+    );
+
+    return;
+}
+
+// ====================================
+// /WORD-REMOVE
+// ====================================
+
+if (
+    command ===
+    "word-remove"
+) {
+    const input =
+        interaction.options.getString(
+            "word"
+        );
+
+    if (
+        typeof input !==
+            "string" ||
+        !input.trim()
+    ) {
+        await safeReply(
+            interaction,
+            "❌ You must provide a word."
+        );
+
+        return;
+    }
+
+    const word =
+        input.trim();
+
+    const removed =
+        await removeBlockedWord(
+            guildId,
+            word
+        );
+
+    await safeReply(
+        interaction,
+        removed
+            ? `✅ **${word}** was removed from the blocked-word database.`
+            : `⚠️ **${word}** was not found in the blocked-word database.`
+    );
+
+    return;
+}
+
+// ====================================
+// /WORD-LIST
+// ====================================
+
+if (
+    command ===
+    "word-list"
+) {
+    const words =
+        await getBlockedWords(
+            guildId
+        );
+
+    if (
+        !Array.isArray(words) ||
+        words.length === 0
+    ) {
+        await safeReply(
+            interaction,
+            "📋 No blocked words are configured."
+        );
+
+        return;
+    }
+
+    let output =
+        "🚫 **BLOCKED WORDS**\n\n";
+
+    for (
+        const word of words
+    ) {
+        const line =
+            `• ${word}\n`;
+
+        if (
+            output.length +
+                line.length >
+            1850
+        ) {
+            output +=
+                "\n...more blocked words exist.";
+
+            break;
+        }
+
+        output +=
+            line;
+    }
+
+    await safeReply(
+        interaction,
+        output
+    );
+
+    return;
+}
+
+// ====================================
+// UNKNOWN COMMAND
+// ====================================
+
+await safeReply(
+    interaction,
+    "❌ Unknown Guardian command."
+);
+
+        } catch (error) {
+
+            console.error(
+                "❌ Interaction command error:",
+                error
+            );
+
+            await safeReply(
+                interaction,
+                "❌ Something went wrong while processing that command."
+            );
+        }
+    }
+);
 
             // ====================================
             // /AUTHORIZE
