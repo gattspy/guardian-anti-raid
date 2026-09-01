@@ -4,10 +4,11 @@ module.exports = {
     // RAID PROTECTION
     // ========================================
 
-    // Number of joins required to trigger a raid.
+    // Number of joins required
+    // to trigger raid protection.
     raidJoinThreshold: 8,
 
-    // Time window used for raid detection.
+    // Raid detection time window.
     // Value is in seconds.
     raidTimeWindow: 10,
 
@@ -20,8 +21,8 @@ module.exports = {
     suspiciousAccountAge:
         24 * 60 * 60 * 1000,
 
-    // Automatically kick accounts
-    // younger than 24 hours.
+    // Automatically kick suspicious
+    // new accounts.
     kickNewAccounts: true,
 
     // ========================================
@@ -44,101 +45,84 @@ module.exports = {
     wordTimeoutDuration:
         24 * 60 * 60 * 1000,
 
+    // Maximum length of one
+    // blocked-word entry.
+    blockedWordMaxLength: 100,
+
     // ========================================
-    // SAFE WORD FILTER
+    // STRICT WORD FILTER
     // ========================================
 
     /*
-     * Keep Unicode normalization enabled.
+     * Guardian currently uses strict
+     * whole-word matching.
      *
      * Example:
      *
-     * blocked:
-     * shit
+     * Blocked:
+     * ass
      *
-     * catches:
-     * shit
-     * SHIT
-     * 𝐬𝐡𝐢𝐭
-     * ｓｈｉｔ
+     * BLOCK:
+     * ass
+     * ASS
+     * "ass"
+     * ass!
      *
-     * This should not cause normal
-     * substring matches by itself.
+     * ALLOW:
+     * class
+     * grass
+     * glasses
+     * assassin
+     *
+     * These advanced matching options
+     * are disabled to prevent false
+     * positives.
      */
-    normalizeUnicodeWords: true,
 
-    // ========================================
-    // LOOKALIKE CHARACTERS
-    // ========================================
+    // Do not convert stylized Unicode
+    // characters into blocked words.
+    normalizeUnicodeWords: false,
 
-    /*
-     * Detect common deliberate substitutions:
-     *
-     * sh1t
-     * sh!t
-     * $hit
-     *
-     * Keep this enabled.
-     */
-    detectLookalikeCharacters: true,
+    // Do not convert substitutions like:
+    //
+    // sh1t
+    // sh!t
+    // $hit
+    //
+    // into blocked words.
+    detectLookalikeCharacters: false,
 
-    // ========================================
-    // SEPARATED WORDS
-    // ========================================
+    // Do not match separated characters like:
+    //
+    // s h i t
+    // s.h.i.t
+    // s-h-i-t
+    detectSeparatedWords: false,
 
-    /*
-     * Detect obvious separated bypasses:
-     *
-     * s h i t
-     * s.h.i.t
-     * s-h-i-t
-     *
-     * Keep this enabled.
-     *
-     * Your index.js matcher should require
-     * at least one separator between letters.
-     */
-    detectSeparatedWords: true,
-
-    // ========================================
-    // REPEATED LETTERS
-    // ========================================
-
-    /*
-     * Detect deliberate repeated-letter bypasses:
-     *
-     * shiiit
-     * fuuuck
-     *
-     * Keep this enabled.
-     */
-    detectRepeatedLetters: true,
+    // Do not reduce repeated letters like:
+    //
+    // shiiit
+    // fuuuck
+    detectRepeatedLetters: false,
 
     // ========================================
     // FUZZY MATCHING
     // ========================================
 
     /*
-     * IMPORTANT:
+     * Keep fuzzy matching disabled.
      *
-     * DISABLED.
-     *
-     * This is the safest choice if Guardian
-     * should ONLY moderate confirmed banned
-     * words and obvious disguises.
-     *
-     * Fuzzy matching can mistake a normal
-     * word for something similar to a
-     * blocked word.
+     * Fuzzy matching can incorrectly flag
+     * normal words that are only similar
+     * to a blocked word.
      */
     fuzzyWordMatching: false,
 
     /*
-     * These remain here in case fuzzy
-     * matching is enabled later.
+     * These values are kept only in case
+     * fuzzy matching is added again later.
      *
-     * They have no effect while
-     * fuzzyWordMatching is false.
+     * They currently have no effect.
      */
     fuzzyMinimumWordLength: 8,
 
@@ -151,17 +135,10 @@ module.exports = {
     fuzzyRequireSameLastCharacter: true,
 
     // ========================================
-    // BLOCKED WORD LIMITS
-    // ========================================
-
-    // Maximum length of one blocked-word entry.
-    blockedWordMaxLength: 100,
-
-    // ========================================
     // AUTOMATIC CATEGORY MESSAGES
     // ========================================
 
-    // Discord normal message limit.
+    // Discord's normal message limit.
     autoMessageMaxLength: 2000,
 
     // ========================================
@@ -169,7 +146,8 @@ module.exports = {
     // ========================================
 
     // Delete up to the previous 3 hours
-    // of messages after a ban-channel trigger.
+    // of messages when a member triggers
+    // the ban channel.
     //
     // Discord expects seconds.
     banDeleteMessageSeconds:
