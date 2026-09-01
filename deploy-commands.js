@@ -14,7 +14,6 @@ const {
 // ========================================
 
 if (!process.env.DISCORD_TOKEN) {
-
     console.error(
         "❌ DISCORD_TOKEN is missing from .env"
     );
@@ -23,7 +22,6 @@ if (!process.env.DISCORD_TOKEN) {
 }
 
 if (!process.env.CLIENT_ID) {
-
     console.error(
         "❌ CLIENT_ID is missing from .env"
     );
@@ -130,13 +128,13 @@ const commands = [
     new SlashCommandBuilder()
         .setName("authorized-list")
         .setDescription(
-            "Show all users and roles authorized to use Guardian."
+            "Show users and roles authorized to use Guardian."
         ),
 
     new SlashCommandBuilder()
         .setName("unauthorized-list")
         .setDescription(
-            "Show all users and roles denied from using Guardian."
+            "Show users and roles denied from using Guardian."
         ),
 
     // ====================================
@@ -146,13 +144,13 @@ const commands = [
     new SlashCommandBuilder()
         .setName("word-add")
         .setDescription(
-            "Add a word to Guardian's smart blocked-word filter."
+            "Add a word to Guardian's blocked-word list."
         )
         .addStringOption(option =>
             option
                 .setName("word")
                 .setDescription(
-                    "Word to block, including disguised variations."
+                    "Exact word to block."
                 )
                 .setMinLength(1)
                 .setMaxLength(100)
@@ -162,7 +160,7 @@ const commands = [
     new SlashCommandBuilder()
         .setName("word-remove")
         .setDescription(
-            "Remove a word from Guardian's blocked-word filter."
+            "Remove a word from Guardian's blocked-word list."
         )
         .addStringOption(option =>
             option
@@ -178,7 +176,7 @@ const commands = [
     new SlashCommandBuilder()
         .setName("word-list")
         .setDescription(
-            "Show all words in Guardian's blocked-word filter."
+            "Show all words in Guardian's blocked-word list."
         ),
 
     // ====================================
@@ -232,7 +230,7 @@ const commands = [
     new SlashCommandBuilder()
         .setName("ban-channel-set")
         .setDescription(
-            "Set a channel where sending a message automatically bans the member."
+            "Set a text channel that automatically bans users who send messages in it."
         )
         .addChannelOption(option =>
             option
@@ -269,23 +267,19 @@ const commands = [
 
 const client =
     new Client({
-
         intents: [
             GatewayIntentBits.Guilds
         ]
-
     });
 
 // ========================================
-// READY
+// DEPLOY COMMANDS
 // ========================================
 
 client.once(
     "ready",
     async () => {
-
         try {
-
             console.log(
                 "================================"
             );
@@ -303,7 +297,7 @@ client.once(
             );
 
             console.log(
-                `📡 Found ${client.guilds.cache.size} server(s)`
+                `📡 Connected to ${client.guilds.cache.size} server(s)`
             );
 
             console.log(
@@ -318,46 +312,26 @@ client.once(
                 );
 
             // ====================================
-            // REGISTER COMMANDS
+            // REGISTER GLOBAL COMMANDS
             // ====================================
 
-            for (
-                const guild of
-                client.guilds.cache.values()
-            ) {
+            console.log(
+                "🔄 Registering global slash commands..."
+            );
 
-                try {
-
-                    console.log(
-                        `🔄 Registering ${commands.length} commands in: ${guild.name}`
-                    );
-
-                    await rest.put(
-                        Routes.applicationGuildCommands(
-                            process.env.CLIENT_ID,
-                            guild.id
-                        ),
-                        {
-                            body:
-                                commands
-                        }
-                    );
-
-                    console.log(
-                        `✅ Commands registered in: ${guild.name}`
-                    );
-
-                } catch (error) {
-
-                    console.error(
-                        `❌ Failed to register commands in ${guild.name}:`
-                    );
-
-                    console.error(
-                        error
-                    );
+            await rest.put(
+                Routes.applicationCommands(
+                    process.env.CLIENT_ID
+                ),
+                {
+                    body:
+                        commands
                 }
-            }
+            );
+
+            console.log(
+                "✅ Global commands registered successfully."
+            );
 
             console.log(
                 "================================"
@@ -372,11 +346,14 @@ client.once(
             );
 
             console.log(
+                "🌍 Registration type: GLOBAL"
+            );
+
+            console.log(
                 "================================"
             );
 
         } catch (error) {
-
             console.error(
                 "❌ Command deployment failed:"
             );
@@ -385,11 +362,11 @@ client.once(
                 error
             );
 
+            process.exitCode =
+                1;
+
         } finally {
-
             client.destroy();
-
-            process.exit(0);
         }
     }
 );
@@ -401,7 +378,6 @@ client.once(
 client.on(
     "error",
     error => {
-
         console.error(
             "❌ Discord client error:",
             error
@@ -410,15 +386,28 @@ client.on(
 );
 
 // ========================================
-// UNHANDLED ERRORS
+// UNHANDLED PROMISE REJECTIONS
 // ========================================
 
 process.on(
     "unhandledRejection",
     error => {
-
         console.error(
             "❌ Unhandled promise rejection:",
+            error
+        );
+    }
+);
+
+// ========================================
+// UNCAUGHT EXCEPTIONS
+// ========================================
+
+process.on(
+    "uncaughtException",
+    error => {
+        console.error(
+            "❌ Uncaught exception:",
             error
         );
     }
@@ -431,7 +420,6 @@ process.on(
 client.login(
     process.env.DISCORD_TOKEN
 ).catch(error => {
-
     console.error(
         "❌ Failed to login to Discord:"
     );
