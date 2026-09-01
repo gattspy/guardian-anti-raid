@@ -69,14 +69,6 @@ if (!process.env.DISCORD_TOKEN) {
     process.exit(1);
 }
 
-if (!process.env.CLIENT_ID) {
-    console.error(
-        "❌ CLIENT_ID is missing from .env"
-    );
-
-    process.exit(1);
-}
-
 if (!process.env.DATABASE_URL) {
     console.error(
         "❌ DATABASE_URL is missing from .env"
@@ -84,6 +76,14 @@ if (!process.env.DATABASE_URL) {
 
     process.exit(1);
 }
+
+/*
+ * CLIENT_ID is NOT required here.
+ *
+ * CLIENT_ID is only needed inside
+ * deploy-commands.js when registering
+ * slash commands.
+ */
 
 // ========================================
 // DATABASE STATE
@@ -100,8 +100,9 @@ const app =
     express();
 
 const PORT =
-    process.env.PORT ||
-    10000;
+    Number(
+        process.env.PORT
+    ) || 10000;
 
 // ========================================
 // DISCORD CLIENT
@@ -190,7 +191,17 @@ async function safeReply(
             !interaction ||
             !interaction.isRepliable()
         ) {
-            return;
+            return false;
+        }
+
+        if (
+            typeof content !==
+            "string"
+        ) {
+            content =
+                String(
+                    content ?? ""
+                );
         }
 
         if (
@@ -202,7 +213,7 @@ async function safeReply(
                     MessageFlags.Ephemeral
             });
 
-            return;
+            return true;
         }
 
         if (
@@ -212,7 +223,7 @@ async function safeReply(
                 content
             });
 
-            return;
+            return true;
         }
 
         await interaction.reply({
@@ -221,23 +232,30 @@ async function safeReply(
                 MessageFlags.Ephemeral
         });
 
+        return true;
+
     } catch (error) {
         if (
-            error.code === 10062 ||
-            error.code === 40060 ||
-            error.code === 10015
+            error?.code ===
+                10062 ||
+            error?.code ===
+                40060 ||
+            error?.code ===
+                10015
         ) {
             console.warn(
                 `⚠️ Discord interaction unavailable (${error.code}).`
             );
 
-            return;
+            return false;
         }
 
         console.error(
             "❌ Interaction response error:",
             error
         );
+
+        return false;
     }
 }
 
@@ -272,8 +290,10 @@ async function deferInteraction(
 
     } catch (error) {
         if (
-            error.code === 10062 ||
-            error.code === 40060
+            error?.code ===
+                10062 ||
+            error?.code ===
+                40060
         ) {
             console.warn(
                 `⚠️ Interaction expired or was already acknowledged (${error.code}).`
@@ -298,6 +318,10 @@ async function deferInteraction(
 function isAdministrator(
     interaction
 ) {
+    if (!interaction) {
+        return false;
+    }
+
     return (
         interaction
             .memberPermissions
@@ -313,7 +337,7 @@ function isAdministrator(
 
 client.once(
     "ready",
-    () => {
+    readyClient => {
         console.log(
             "================================"
         );
@@ -327,15 +351,33 @@ client.once(
         );
 
         console.log(
-            `Logged in as ${client.user.tag}`
+            `🤖 Logged in as ${readyClient.user.tag}`
         );
 
         console.log(
-            `Monitoring ${client.guilds.cache.size} server(s)`
+            `🌐 Monitoring ${readyClient.guilds.cache.size} server(s)`
         );
 
         console.log(
-            "New-account protection: 24 hours"
+            config.kickNewAccounts
+                ? "🛡️ New-account protection: ENABLED"
+                : "⚠️ New-account protection: DISABLED"
+        );
+
+        console.log(
+            `⏱️ Suspicious account age: ${
+                Math.floor(
+                    (
+                        config.suspiciousAccountAge ??
+                        24 * 60 * 60 * 1000
+                    ) /
+                    (
+                        60 *
+                        60 *
+                        1000
+                    )
+                )
+            } hour(s)`
         );
 
         console.log(
@@ -349,7 +391,7 @@ client.once(
         );
 
         console.log(
-            "🚫 Exact blocked-word filter: ENABLED"
+            "🚫 Exact whole-word filter: ENABLED"
         );
 
         console.log(
@@ -357,11 +399,33 @@ client.once(
         );
 
         console.log(
-            "🔤 Unicode normalization: ENABLED"
+            config.normalizeUnicodeWords
+                ? "🔤 Unicode transformation: ENABLED"
+                : "🔤 Unicode transformation: DISABLED"
         );
 
         console.log(
-            "🧠 Fuzzy matching: DISABLED"
+            config.detectLookalikeCharacters
+                ? "🔡 Lookalike matching: ENABLED"
+                : "🔡 Lookalike matching: DISABLED"
+        );
+
+        console.log(
+            config.detectSeparatedWords
+                ? "↔️ Separated-word matching: ENABLED"
+                : "↔️ Separated-word matching: DISABLED"
+        );
+
+        console.log(
+            config.detectRepeatedLetters
+                ? "🔁 Repeated-letter matching: ENABLED"
+                : "🔁 Repeated-letter matching: DISABLED"
+        );
+
+        console.log(
+            config.fuzzyWordMatching
+                ? "🧠 Fuzzy matching: ENABLED"
+                : "🧠 Fuzzy matching: DISABLED"
         );
 
         console.log(
@@ -370,6 +434,10 @@ client.once(
 
         console.log(
             "🔨 Ban-trigger channel protection: ENABLED"
+        );
+
+        console.log(
+            "================================"
         );
     }
 );
@@ -382,9 +450,21 @@ client.on(
     "guildMemberAdd",
     async member => {
         try {
+            if (
+                !member ||
+                !member.guild ||
+                !member.user
+            ) {
+                return;
+            }
+
             console.log(
                 `[JOIN] ${member.user.tag} joined ${member.guild.name}`
             );
+
+            // ====================================
+            // IGNORE BOTS
+            // ====================================
 
             if (
                 member.user.bot
@@ -392,27 +472,50 @@ client.on(
                 return;
             }
 
+            // ====================================
+            // WHITELIST CHECK
+            // ====================================
+
             if (
                 isWhitelisted(
                     member
                 )
             ) {
+                console.log(
+                    `[WHITELIST] ${member.user.tag} bypassed new-account protection.`
+                );
+
                 return;
             }
+
+            // ====================================
+            // NEW ACCOUNT CHECK
+            // ====================================
 
             const suspicious =
                 isSuspiciousAccount(
                     member
                 );
 
-            // ====================================
-            // KICK NEW ACCOUNTS
-            // ====================================
-
             if (
                 suspicious &&
                 config.kickNewAccounts
             ) {
+                const accountAgeHours =
+                    (
+                        Date.now() -
+                        member.user.createdTimestamp
+                    ) /
+                    (
+                        60 *
+                        60 *
+                        1000
+                    );
+
+                console.log(
+                    `[PROTECTION] New account detected: ${member.user.tag} (${accountAgeHours.toFixed(2)} hour(s) old)`
+                );
+
                 const kicked =
                     await kickMember(
                         member,
@@ -423,7 +526,11 @@ client.on(
                     kicked
                 ) {
                     console.log(
-                        `[PROTECTION] Kicked ${member.user.tag}`
+                        `[PROTECTION] ✅ Kicked ${member.user.tag}`
+                    );
+                } else {
+                    console.warn(
+                        `[PROTECTION] ⚠️ Could not kick ${member.user.tag}`
                     );
                 }
 
@@ -436,12 +543,20 @@ client.on(
 
             const recentJoins =
                 recordJoin(
-                    member.guild.id,
+                    member.guild,
                     member.id
                 );
 
+            const raidWindow =
+                config.raidTimeWindow ??
+                10;
+
+            const raidThreshold =
+                config.raidJoinThreshold ??
+                8;
+
             console.log(
-                `[JOIN RATE] ${recentJoins} joins / ${config.raidTimeWindow} seconds`
+                `[JOIN RATE] ${recentJoins} join(s) / ${raidWindow} seconds`
             );
 
             // ====================================
@@ -450,19 +565,35 @@ client.on(
 
             if (
                 recentJoins >=
-                    config.raidJoinThreshold &&
+                    raidThreshold &&
                 !isLockedDown(
-                    member.guild.id
+                    member.guild
                 )
             ) {
                 console.log(
                     `[RAID] 🚨 RAID DETECTED in ${member.guild.name}`
                 );
 
-                await lockdown(
-                    member.guild,
-                    `${recentJoins} members joined within ${config.raidTimeWindow} seconds`
-                );
+                const reason =
+                    `${recentJoins} members joined within ${raidWindow} seconds`;
+
+                const activated =
+                    await lockdown(
+                        member.guild,
+                        reason
+                    );
+
+                if (!activated) {
+                    console.warn(
+                        `[RAID] Lockdown could not be activated in ${member.guild.name}.`
+                    );
+
+                    return;
+                }
+
+                // ====================================
+                // FIND RAID LOG CHANNEL
+                // ====================================
 
                 const logChannel =
                     member.guild
@@ -471,63 +602,105 @@ client.on(
                         .find(
                             channel =>
                                 channel.name ===
-                                "raid-logs"
+                                    "raid-logs" &&
+                                (
+                                    channel.type ===
+                                        ChannelType.GuildText ||
+                                    channel.type ===
+                                        ChannelType.GuildAnnouncement
+                                )
                         );
 
                 if (
-                    logChannel &&
-                    typeof logChannel.send ===
+                    !logChannel ||
+                    typeof logChannel.send !==
                         "function"
                 ) {
-                    const embed =
-                        new EmbedBuilder()
-                            .setTitle(
-                                "🚨 RAID DETECTED"
-                            )
+                    console.warn(
+                        `[RAID] No usable #raid-logs channel found in ${member.guild.name}.`
+                    );
 
-                            .setDescription(
-                                "Guardian Anti-Raid detected a rapid increase in members."
-                            )
+                    return;
+                }
 
-                            .addFields(
-                                {
-                                    name:
-                                        "Server",
+                // ====================================
+                // RAID LOG EMBED
+                // ====================================
 
-                                    value:
-                                        member.guild.name
-                                },
-                                {
-                                    name:
-                                        "Join Rate",
+                const embed =
+                    new EmbedBuilder()
+                        .setTitle(
+                            "🚨 RAID DETECTED"
+                        )
 
-                                    value:
-                                        `${recentJoins} joins / ${config.raidTimeWindow} seconds`
-                                },
-                                {
-                                    name:
-                                        "Action",
+                        .setDescription(
+                            "Guardian Anti-Raid detected a rapid increase in member joins."
+                        )
 
-                                    value:
-                                        "🔒 Server lockdown activated"
-                                }
-                            )
+                        .addFields(
+                            {
+                                name:
+                                    "Server",
 
-                            .setTimestamp();
+                                value:
+                                    member.guild.name,
 
-                    try {
-                        await logChannel.send({
-                            embeds: [
-                                embed
-                            ]
-                        });
+                                inline:
+                                    false
+                            },
 
-                    } catch (error) {
-                        console.error(
-                            "❌ Could not send raid log:",
-                            error.message
-                        );
-                    }
+                            {
+                                name:
+                                    "Join Rate",
+
+                                value:
+                                    `${recentJoins} joins / ${raidWindow} seconds`,
+
+                                inline:
+                                    false
+                            },
+
+                            {
+                                name:
+                                    "Threshold",
+
+                                value:
+                                    `${raidThreshold} joins`,
+
+                                inline:
+                                    false
+                            },
+
+                            {
+                                name:
+                                    "Action",
+
+                                value:
+                                    "🔒 Server lockdown activated",
+
+                                inline:
+                                    false
+                            }
+                        )
+
+                        .setTimestamp();
+
+                try {
+                    await logChannel.send({
+                        embeds: [
+                            embed
+                        ]
+                    });
+
+                    console.log(
+                        `[RAID] ✅ Raid alert sent to #${logChannel.name}`
+                    );
+
+                } catch (error) {
+                    console.error(
+                        "❌ Could not send raid log:",
+                        error.message
+                    );
                 }
             }
 
