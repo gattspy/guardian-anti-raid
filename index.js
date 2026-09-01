@@ -1,3 +1,545 @@
+require("dotenv").config();
+
+const express = require("express");
+
+const {
+    Client,
+    GatewayIntentBits,
+    EmbedBuilder,
+    ChannelType,
+    Partials,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle,
+    ActionRowBuilder,
+    MessageFlags
+} = require("discord.js");
+
+const database =
+    require("./database");
+
+const {
+    recordJoin,
+    isSuspiciousAccount,
+    isWhitelisted,
+    kickMember,
+    lockdown,
+    unlock,
+    isLockedDown,
+
+    authorizeUser,
+    unauthorizeUser,
+    getAuthorizedUsers,
+    getUnauthorizedUsers,
+
+    authorizeRole,
+    unauthorizeRole,
+    getAuthorizedRoles,
+    getUnauthorizedRoles,
+
+    canUseGuardian,
+
+    addBlockedWord,
+    removeBlockedWord,
+    getBlockedWords,
+
+    setAutoCategoryMessage,
+    removeAutoCategoryMessage,
+    getAutoCategoryMessage,
+    getAutoCategoryMessages,
+
+    setBanTriggerChannel,
+    removeBanTriggerChannel,
+    getBanTriggerChannel
+
+} = require("./antiRaid");
+
+const config =
+    require("./config");
+
+// ========================================
+// ENVIRONMENT CHECK
+// ========================================
+
+if (!process.env.DISCORD_TOKEN) {
+    console.error(
+        "❌ DISCORD_TOKEN is missing from .env"
+    );
+
+    process.exit(1);
+}
+
+if (!process.env.CLIENT_ID) {
+    console.error(
+        "❌ CLIENT_ID is missing from .env"
+    );
+
+    process.exit(1);
+}
+
+if (!process.env.DATABASE_URL) {
+    console.error(
+        "❌ DATABASE_URL is missing from .env"
+    );
+
+    process.exit(1);
+}
+
+// ========================================
+// DATABASE STATE
+// ========================================
+
+let databaseReady =
+    false;
+
+// ========================================
+// EXPRESS / RENDER
+// ========================================
+
+const app =
+    express();
+
+const PORT =
+    process.env.PORT ||
+    10000;
+
+// ========================================
+// DISCORD CLIENT
+// ========================================
+
+const client =
+    new Client({
+        intents: [
+            GatewayIntentBits.Guilds,
+            GatewayIntentBits.GuildMembers,
+            GatewayIntentBits.GuildMessages,
+            GatewayIntentBits.MessageContent
+        ],
+
+        partials: [
+            Partials.Channel,
+            Partials.Message
+        ]
+    });
+
+// ========================================
+// HOME
+// ========================================
+
+app.get(
+    "/",
+    (req, res) => {
+        res
+            .status(200)
+            .send(
+                "🛡️ Guardian Anti-Raid is online."
+            );
+    }
+);
+
+// ========================================
+// HEALTH
+// ========================================
+
+app.get(
+    "/health",
+    (req, res) => {
+        res
+            .status(200)
+            .json({
+                status:
+                    "online",
+
+                bot:
+                    client.isReady()
+                        ? "online"
+                        : "starting",
+
+                database:
+                    databaseReady
+                        ? "online"
+                        : "offline"
+            });
+    }
+);
+
+// ========================================
+// EXPRESS START
+// ========================================
+
+app.listen(
+    PORT,
+    "0.0.0.0",
+    () => {
+        console.log(
+            `🌐 Web server running on port ${PORT}`
+        );
+    }
+);
+
+// ========================================
+// SAFE INTERACTION RESPONSE
+// ========================================
+
+async function safeReply(
+    interaction,
+    content
+) {
+    try {
+        if (
+            !interaction ||
+            !interaction.isRepliable()
+        ) {
+            return;
+        }
+
+        if (
+            interaction.replied
+        ) {
+            await interaction.followUp({
+                content,
+                flags:
+                    MessageFlags.Ephemeral
+            });
+
+            return;
+        }
+
+        if (
+            interaction.deferred
+        ) {
+            await interaction.editReply({
+                content
+            });
+
+            return;
+        }
+
+        await interaction.reply({
+            content,
+            flags:
+                MessageFlags.Ephemeral
+        });
+
+    } catch (error) {
+        if (
+            error.code === 10062 ||
+            error.code === 40060 ||
+            error.code === 10015
+        ) {
+            console.warn(
+                `⚠️ Discord interaction unavailable (${error.code}).`
+            );
+
+            return;
+        }
+
+        console.error(
+            "❌ Interaction response error:",
+            error
+        );
+    }
+}
+
+// ========================================
+// DEFER INTERACTION
+// ========================================
+
+async function deferInteraction(
+    interaction
+) {
+    try {
+        if (
+            !interaction ||
+            !interaction.isRepliable()
+        ) {
+            return false;
+        }
+
+        if (
+            interaction.replied ||
+            interaction.deferred
+        ) {
+            return true;
+        }
+
+        await interaction.deferReply({
+            flags:
+                MessageFlags.Ephemeral
+        });
+
+        return true;
+
+    } catch (error) {
+        if (
+            error.code === 10062 ||
+            error.code === 40060
+        ) {
+            console.warn(
+                `⚠️ Interaction expired or was already acknowledged (${error.code}).`
+            );
+
+            return false;
+        }
+
+        console.error(
+            "❌ Could not defer interaction:",
+            error
+        );
+
+        return false;
+    }
+}
+
+// ========================================
+// ADMIN CHECK
+// ========================================
+
+function isAdministrator(
+    interaction
+) {
+    return (
+        interaction
+            .memberPermissions
+            ?.has(
+                "Administrator"
+            ) === true
+    );
+}
+
+// ========================================
+// BOT READY
+// ========================================
+
+client.once(
+    "ready",
+    () => {
+        console.log(
+            "================================"
+        );
+
+        console.log(
+            "🛡️ GUARDIAN ANTI-RAID ONLINE"
+        );
+
+        console.log(
+            "================================"
+        );
+
+        console.log(
+            `Logged in as ${client.user.tag}`
+        );
+
+        console.log(
+            `Monitoring ${client.guilds.cache.size} server(s)`
+        );
+
+        console.log(
+            "New-account protection: 24 hours"
+        );
+
+        console.log(
+            databaseReady
+                ? "🗄️ PostgreSQL: READY"
+                : "❌ PostgreSQL: NOT READY"
+        );
+
+        console.log(
+            "🔐 Guardian access control: ENABLED"
+        );
+
+        console.log(
+            "🚫 Exact blocked-word filter: ENABLED"
+        );
+
+        console.log(
+            "✏️ Edited-message filter: ENABLED"
+        );
+
+        console.log(
+            "🔤 Unicode normalization: ENABLED"
+        );
+
+        console.log(
+            "🧠 Fuzzy matching: DISABLED"
+        );
+
+        console.log(
+            "📨 Multi-line category auto-messages: ENABLED"
+        );
+
+        console.log(
+            "🔨 Ban-trigger channel protection: ENABLED"
+        );
+    }
+);
+
+// ========================================
+// MEMBER JOIN
+// ========================================
+
+client.on(
+    "guildMemberAdd",
+    async member => {
+        try {
+            console.log(
+                `[JOIN] ${member.user.tag} joined ${member.guild.name}`
+            );
+
+            if (
+                member.user.bot
+            ) {
+                return;
+            }
+
+            if (
+                isWhitelisted(
+                    member
+                )
+            ) {
+                return;
+            }
+
+            const suspicious =
+                isSuspiciousAccount(
+                    member
+                );
+
+            // ====================================
+            // KICK NEW ACCOUNTS
+            // ====================================
+
+            if (
+                suspicious &&
+                config.kickNewAccounts
+            ) {
+                const kicked =
+                    await kickMember(
+                        member,
+                        "Guardian Anti-Raid: account is less than 24 hours old."
+                    );
+
+                if (
+                    kicked
+                ) {
+                    console.log(
+                        `[PROTECTION] Kicked ${member.user.tag}`
+                    );
+                }
+
+                return;
+            }
+
+            // ====================================
+            // RECORD JOIN
+            // ====================================
+
+            const recentJoins =
+                recordJoin(
+                    member.guild.id,
+                    member.id
+                );
+
+            console.log(
+                `[JOIN RATE] ${recentJoins} joins / ${config.raidTimeWindow} seconds`
+            );
+
+            // ====================================
+            // RAID DETECTION
+            // ====================================
+
+            if (
+                recentJoins >=
+                    config.raidJoinThreshold &&
+                !isLockedDown(
+                    member.guild.id
+                )
+            ) {
+                console.log(
+                    `[RAID] 🚨 RAID DETECTED in ${member.guild.name}`
+                );
+
+                await lockdown(
+                    member.guild,
+                    `${recentJoins} members joined within ${config.raidTimeWindow} seconds`
+                );
+
+                const logChannel =
+                    member.guild
+                        .channels
+                        .cache
+                        .find(
+                            channel =>
+                                channel.name ===
+                                "raid-logs"
+                        );
+
+                if (
+                    logChannel &&
+                    typeof logChannel.send ===
+                        "function"
+                ) {
+                    const embed =
+                        new EmbedBuilder()
+                            .setTitle(
+                                "🚨 RAID DETECTED"
+                            )
+
+                            .setDescription(
+                                "Guardian Anti-Raid detected a rapid increase in members."
+                            )
+
+                            .addFields(
+                                {
+                                    name:
+                                        "Server",
+
+                                    value:
+                                        member.guild.name
+                                },
+                                {
+                                    name:
+                                        "Join Rate",
+
+                                    value:
+                                        `${recentJoins} joins / ${config.raidTimeWindow} seconds`
+                                },
+                                {
+                                    name:
+                                        "Action",
+
+                                    value:
+                                        "🔒 Server lockdown activated"
+                                }
+                            )
+
+                            .setTimestamp();
+
+                    try {
+                        await logChannel.send({
+                            embeds: [
+                                embed
+                            ]
+                        });
+
+                    } catch (error) {
+                        console.error(
+                            "❌ Could not send raid log:",
+                            error.message
+                        );
+                    }
+                }
+            }
+
+        } catch (error) {
+            console.error(
+                "❌ Member join handler error:",
+                error
+            );
+        }
+    }
+);
+
 // ========================================
 // WORD FILTER NORMALIZATION
 // ========================================
