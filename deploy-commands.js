@@ -1,8 +1,6 @@
 require("dotenv").config();
 
 const {
-    Client,
-    GatewayIntentBits,
     REST,
     Routes,
     SlashCommandBuilder,
@@ -54,7 +52,7 @@ const commands = [
     new SlashCommandBuilder()
         .setName("raidstatus")
         .setDescription(
-            "Check the current raid status."
+            "Check the current Guardian raid status."
         ),
 
     // ====================================
@@ -64,7 +62,7 @@ const commands = [
     new SlashCommandBuilder()
         .setName("authorize")
         .setDescription(
-            "Allow a specific user to use Guardian."
+            "Authorize a user to use Guardian."
         )
         .addUserOption(option =>
             option
@@ -78,13 +76,13 @@ const commands = [
     new SlashCommandBuilder()
         .setName("unauthorize")
         .setDescription(
-            "Deny a specific user from using Guardian."
+            "Remove Guardian authorization from a user."
         )
         .addUserOption(option =>
             option
                 .setName("user")
                 .setDescription(
-                    "User to deny."
+                    "User to unauthorize."
                 )
                 .setRequired(true)
         ),
@@ -96,7 +94,7 @@ const commands = [
     new SlashCommandBuilder()
         .setName("authorize-role")
         .setDescription(
-            "Allow everyone with a role to use Guardian."
+            "Authorize a role to use Guardian."
         )
         .addRoleOption(option =>
             option
@@ -110,13 +108,13 @@ const commands = [
     new SlashCommandBuilder()
         .setName("unauthorize-role")
         .setDescription(
-            "Deny everyone with a role from using Guardian."
+            "Remove Guardian authorization from a role."
         )
         .addRoleOption(option =>
             option
                 .setName("role")
                 .setDescription(
-                    "Role to deny."
+                    "Role to unauthorize."
                 )
                 .setRequired(true)
         ),
@@ -134,7 +132,7 @@ const commands = [
     new SlashCommandBuilder()
         .setName("unauthorized-list")
         .setDescription(
-            "Show users and roles denied from using Guardian."
+            "Show users and roles explicitly denied Guardian access."
         ),
 
     // ====================================
@@ -144,7 +142,7 @@ const commands = [
     new SlashCommandBuilder()
         .setName("word-add")
         .setDescription(
-            "Add a word to Guardian's blocked-word list."
+            "Add an exact word to Guardian's blocked-word list."
         )
         .addStringOption(option =>
             option
@@ -176,7 +174,7 @@ const commands = [
     new SlashCommandBuilder()
         .setName("word-list")
         .setDescription(
-            "Show all words in Guardian's blocked-word list."
+            "Show Guardian's blocked-word list."
         ),
 
     // ====================================
@@ -186,7 +184,7 @@ const commands = [
     new SlashCommandBuilder()
         .setName("automessage-set")
         .setDescription(
-            "Set a multi-line message for new channels in a category."
+            "Set a message for newly created channels in a category."
         )
         .addChannelOption(option =>
             option
@@ -230,13 +228,13 @@ const commands = [
     new SlashCommandBuilder()
         .setName("ban-channel-set")
         .setDescription(
-            "Set a text channel that automatically bans users who send messages in it."
+            "Set a channel that bans non-admin users who send messages in it."
         )
         .addChannelOption(option =>
             option
                 .setName("channel")
                 .setDescription(
-                    "Text channel that will trigger the automatic ban."
+                    "Text channel to use as the ban-trigger channel."
                 )
                 .addChannelTypes(
                     ChannelType.GuildText
@@ -247,78 +245,61 @@ const commands = [
     new SlashCommandBuilder()
         .setName("ban-channel-remove")
         .setDescription(
-            "Disable the automatic ban-trigger channel."
+            "Disable the current ban-trigger channel."
         ),
 
     new SlashCommandBuilder()
         .setName("ban-channel-status")
         .setDescription(
-            "Show the current automatic ban-trigger channel."
+            "Show the current ban-trigger channel."
         )
 
-].map(
-    command =>
-        command.toJSON()
+].map(command =>
+    command.toJSON()
 );
 
 // ========================================
-// DISCORD CLIENT
+// REST CLIENT
 // ========================================
 
-const client =
-    new Client({
-        intents: [
-            GatewayIntentBits.Guilds
-        ]
-    });
+const rest =
+    new REST({
+        version: "10"
+    }).setToken(
+        process.env.DISCORD_TOKEN
+    );
 
 // ========================================
-// DEPLOY COMMANDS
+// DEPLOY GLOBAL COMMANDS
 // ========================================
 
-client.once(
-    "ready",
-    async () => {
-        try {
-            console.log(
-                "================================"
-            );
+async function deployCommands() {
+    try {
+        console.log(
+            "================================"
+        );
 
-            console.log(
-                "🛡️ GUARDIAN COMMAND DEPLOYER"
-            );
+        console.log(
+            "🛡️ GUARDIAN COMMAND DEPLOYER"
+        );
 
-            console.log(
-                "================================"
-            );
+        console.log(
+            "================================"
+        );
 
-            console.log(
-                `✅ Logged in as ${client.user.tag}`
-            );
+        console.log(
+            `📋 Preparing ${commands.length} command(s)`
+        );
 
-            console.log(
-                `📡 Connected to ${client.guilds.cache.size} server(s)`
-            );
+        console.log(
+            "🌍 Registration type: GLOBAL"
+        );
 
-            console.log(
-                `📋 Preparing ${commands.length} command(s)`
-            );
+        console.log(
+            "🔄 Registering slash commands..."
+        );
 
-            const rest =
-                new REST({
-                    version: "10"
-                }).setToken(
-                    process.env.DISCORD_TOKEN
-                );
-
-            // ====================================
-            // REGISTER GLOBAL COMMANDS
-            // ====================================
-
-            console.log(
-                "🔄 Registering global slash commands..."
-            );
-
+        const deployed =
             await rest.put(
                 Routes.applicationCommands(
                     process.env.CLIENT_ID
@@ -329,61 +310,90 @@ client.once(
                 }
             );
 
-            console.log(
-                "✅ Global commands registered successfully."
-            );
+        console.log(
+            "================================"
+        );
 
-            console.log(
-                "================================"
-            );
+        console.log(
+            "✅ GLOBAL COMMANDS REGISTERED"
+        );
 
-            console.log(
-                "✅ COMMAND DEPLOYMENT COMPLETE"
-            );
+        console.log(
+            "================================"
+        );
 
-            console.log(
-                `📋 ${commands.length} commands deployed`
-            );
+        console.log(
+            `📋 ${Array.isArray(deployed)
+                ? deployed.length
+                : commands.length} command(s) deployed`
+        );
 
-            console.log(
-                "🌍 Registration type: GLOBAL"
-            );
+        console.log(
+            `🤖 Application ID: ${process.env.CLIENT_ID}`
+        );
 
-            console.log(
-                "================================"
-            );
+        console.log(
+            "🌍 Registration: GLOBAL"
+        );
 
-        } catch (error) {
+        console.log(
+            "================================"
+        );
+
+        console.log(
+            "✅ COMMAND DEPLOYMENT COMPLETE"
+        );
+
+        console.log(
+            "================================"
+        );
+
+    } catch (error) {
+        console.error(
+            "================================"
+        );
+
+        console.error(
+            "❌ COMMAND DEPLOYMENT FAILED"
+        );
+
+        console.error(
+            "================================"
+        );
+
+        if (
+            error?.rawError
+        ) {
             console.error(
-                "❌ Command deployment failed:"
+                error.rawError
             );
-
+        } else {
             console.error(
                 error
             );
-
-            process.exitCode =
-                1;
-
-        } finally {
-            client.destroy();
         }
-    }
-);
 
-// ========================================
-// DISCORD ERROR
-// ========================================
+        if (
+            error?.status === 401 ||
+            error?.code === 0
+        ) {
+            console.error(
+                "❌ Check your DISCORD_TOKEN."
+            );
+        }
 
-client.on(
-    "error",
-    error => {
-        console.error(
-            "❌ Discord client error:",
-            error
-        );
+        if (
+            error?.status === 404
+        ) {
+            console.error(
+                "❌ Check your CLIENT_ID."
+            );
+        }
+
+        process.exitCode =
+            1;
     }
-);
+}
 
 // ========================================
 // UNHANDLED PROMISE REJECTIONS
@@ -410,23 +420,14 @@ process.on(
             "❌ Uncaught exception:",
             error
         );
+
+        process.exitCode =
+            1;
     }
 );
 
 // ========================================
-// LOGIN
+// RUN DEPLOYMENT
 // ========================================
 
-client.login(
-    process.env.DISCORD_TOKEN
-).catch(error => {
-    console.error(
-        "❌ Failed to login to Discord:"
-    );
-
-    console.error(
-        error
-    );
-
-    process.exit(1);
-});
+deployCommands();
