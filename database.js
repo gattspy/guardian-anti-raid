@@ -61,39 +61,40 @@ function normalizeForWordFilter(
     text
 ) {
 
-    return String(text || "")
+    return String(
+        text || ""
+    )
 
-        .normalize("NFKC")
+        // Convert stylized Unicode fonts
+        // and full-width characters.
+        .normalize(
+            "NFKC"
+        )
 
-        .normalize("NFD")
+        // Separate accented characters.
+        .normalize(
+            "NFD"
+        )
 
+        // Remove accent / combining marks.
         .replace(
             /\p{M}/gu,
             ""
         )
 
-        .normalize("NFC")
+        .normalize(
+            "NFC"
+        )
 
+        // Remove zero-width / invisible characters.
         .replace(
             /[\u200B-\u200D\u2060\uFEFF]/g,
             ""
         )
 
-        .toLowerCase();
-}
+        .toLowerCase()
 
-// ========================================
-// REGEX ESCAPE
-// ========================================
-
-function escapeRegExp(
-    text
-) {
-
-    return String(text).replace(
-        /[.*+?^${}()|[\]\\]/g,
-        "\\$&"
-    );
+        .trim();
 }
 
 // ========================================
@@ -121,7 +122,10 @@ async function initDatabase() {
                 word TEXT NOT NULL,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
 
-                PRIMARY KEY (guild_id, word)
+                PRIMARY KEY (
+                    guild_id,
+                    word
+                )
             );
         `);
 
@@ -135,7 +139,10 @@ async function initDatabase() {
                 user_id TEXT NOT NULL,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
 
-                PRIMARY KEY (guild_id, user_id)
+                PRIMARY KEY (
+                    guild_id,
+                    user_id
+                )
             );
         `);
 
@@ -149,7 +156,10 @@ async function initDatabase() {
                 user_id TEXT NOT NULL,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
 
-                PRIMARY KEY (guild_id, user_id)
+                PRIMARY KEY (
+                    guild_id,
+                    user_id
+                )
             );
         `);
 
@@ -163,7 +173,10 @@ async function initDatabase() {
                 role_id TEXT NOT NULL,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
 
-                PRIMARY KEY (guild_id, role_id)
+                PRIMARY KEY (
+                    guild_id,
+                    role_id
+                )
             );
         `);
 
@@ -177,7 +190,10 @@ async function initDatabase() {
                 role_id TEXT NOT NULL,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
 
-                PRIMARY KEY (guild_id, role_id)
+                PRIMARY KEY (
+                    guild_id,
+                    role_id
+                )
             );
         `);
 
@@ -193,7 +209,10 @@ async function initDatabase() {
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ DEFAULT NOW(),
 
-                PRIMARY KEY (guild_id, category_id)
+                PRIMARY KEY (
+                    guild_id,
+                    category_id
+                )
             );
         `);
 
@@ -203,7 +222,7 @@ async function initDatabase() {
 
         await client.query(`
             CREATE TABLE IF NOT EXISTS ban_trigger_channels (
-                guild_id TEXT NOT NULL PRIMARY KEY,
+                guild_id TEXT PRIMARY KEY,
                 channel_id TEXT NOT NULL,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -299,16 +318,27 @@ async function addBlockedWord(
         );
     }
 
-    if (!guildId || !word) {
+    if (
+        !guildId ||
+        !word
+    ) {
         return false;
     }
 
     const cleanWord =
         normalizeForWordFilter(
             word
-        ).trim();
+        );
 
     if (!cleanWord) {
+        return false;
+    }
+
+    // Keep blocked words reasonably short.
+    if (
+        cleanWord.length >
+        100
+    ) {
         return false;
     }
 
@@ -356,14 +386,17 @@ async function removeBlockedWord(
         );
     }
 
-    if (!guildId || !word) {
+    if (
+        !guildId ||
+        !word
+    ) {
         return false;
     }
 
     const cleanWord =
         normalizeForWordFilter(
             word
-        ).trim();
+        );
 
     if (!cleanWord) {
         return false;
@@ -427,77 +460,6 @@ async function getBlockedWords(
         row =>
             row.word
     );
-}
-
-// ========================================
-// FIND BLOCKED WORD
-// WHOLE-WORD MATCHING
-// ========================================
-
-async function findBlockedWord(
-    guildId,
-    message
-) {
-
-    if (!databaseReady) {
-
-        throw new Error(
-            "Database is not ready."
-        );
-    }
-
-    if (
-        !guildId ||
-        !message
-    ) {
-        return null;
-    }
-
-    const words =
-        await getBlockedWords(
-            guildId
-        );
-
-    const content =
-        normalizeForWordFilter(
-            message
-        );
-
-    for (
-        const storedWord of words
-    ) {
-
-        const cleanWord =
-            normalizeForWordFilter(
-                storedWord
-            ).trim();
-
-        if (!cleanWord) {
-            continue;
-        }
-
-        const escapedWord =
-            escapeRegExp(
-                cleanWord
-            );
-
-        const regex =
-            new RegExp(
-                `(?<![\\p{L}\\p{N}_])${escapedWord}(?![\\p{L}\\p{N}_])`,
-                "iu"
-            );
-
-        if (
-            regex.test(
-                content
-            )
-        ) {
-
-            return storedWord;
-        }
-    }
-
-    return null;
 }
 
 // ========================================
@@ -588,7 +550,7 @@ async function unauthorizeUser(
         return false;
     }
 
-    // Remove existing authorization first.
+    // Remove authorization first.
     await pool.query(
         `
         DELETE FROM authorized_users
@@ -882,7 +844,7 @@ async function unauthorizeRole(
         return false;
     }
 
-    // Remove existing authorization first.
+    // Remove authorization first.
     await pool.query(
         `
         DELETE FROM authorized_roles
@@ -1114,6 +1076,13 @@ async function setAutoCategoryMessage(
         !guildId ||
         !categoryId ||
         !cleanMessage
+    ) {
+        return false;
+    }
+
+    if (
+        cleanMessage.length >
+        2000
     ) {
         return false;
     }
@@ -1422,6 +1391,21 @@ async function getBanTriggerChannel(
 }
 
 // ========================================
+// DATABASE ERROR HANDLER
+// ========================================
+
+pool.on(
+    "error",
+    error => {
+
+        console.error(
+            "❌ Unexpected PostgreSQL pool error:",
+            error
+        );
+    }
+);
+
+// ========================================
 // EXPORTS
 // ========================================
 
@@ -1440,7 +1424,6 @@ module.exports = {
     addBlockedWord,
     removeBlockedWord,
     getBlockedWords,
-    findBlockedWord,
 
     // Users
     authorizeUser,
