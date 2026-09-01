@@ -15,13 +15,13 @@ module.exports = {
     // NEW ACCOUNT PROTECTION
     // ========================================
 
-    // Accounts younger than 24 hours are
-    // considered suspicious.
+    // Accounts younger than 24 hours
+    // are considered suspicious.
     suspiciousAccountAge:
         24 * 60 * 60 * 1000,
 
-    // Automatically kick accounts younger
-    // than the age above.
+    // Automatically kick accounts
+    // younger than 24 hours.
     kickNewAccounts: true,
 
     // ========================================
@@ -37,93 +37,131 @@ module.exports = {
     // BLOCKED WORD PROTECTION
     // ========================================
 
-    // Timeout duration after using
-    // a blocked word.
+    // Timeout duration after a confirmed
+    // blocked-word match.
+    //
     // 24 hours.
     wordTimeoutDuration:
         24 * 60 * 60 * 1000,
 
     // ========================================
-    // SMART WORD FILTER
+    // SAFE WORD FILTER
     // ========================================
 
-    // Detect stylized Unicode versions:
-    //
-    // 𝐬𝐡𝐢𝐭
-    // 𝕤𝕙𝕚𝕥
-    // ｓｈｉｔ
+    /*
+     * Keep Unicode normalization enabled.
+     *
+     * Example:
+     *
+     * blocked:
+     * shit
+     *
+     * catches:
+     * shit
+     * SHIT
+     * 𝐬𝐡𝐢𝐭
+     * ｓｈｉｔ
+     *
+     * This should not cause normal
+     * substring matches by itself.
+     */
     normalizeUnicodeWords: true,
 
-    // Detect substitutions such as:
-    //
-    // sh1t
-    // sh!t
-    // $hit
+    // ========================================
+    // LOOKALIKE CHARACTERS
+    // ========================================
+
+    /*
+     * Detect common deliberate substitutions:
+     *
+     * sh1t
+     * sh!t
+     * $hit
+     *
+     * Keep this enabled.
+     */
     detectLookalikeCharacters: true,
 
-    // Detect separated bypass attempts:
-    //
-    // s h i t
-    // s.h.i.t
-    // s-h-i-t
+    // ========================================
+    // SEPARATED WORDS
+    // ========================================
+
+    /*
+     * Detect obvious separated bypasses:
+     *
+     * s h i t
+     * s.h.i.t
+     * s-h-i-t
+     *
+     * Keep this enabled.
+     *
+     * Your index.js matcher should require
+     * at least one separator between letters.
+     */
     detectSeparatedWords: true,
 
-    // Detect repeated-letter bypasses:
-    //
-    // shiiit
-    // fuuuck
+    // ========================================
+    // REPEATED LETTERS
+    // ========================================
+
+    /*
+     * Detect deliberate repeated-letter bypasses:
+     *
+     * shiiit
+     * fuuuck
+     *
+     * Keep this enabled.
+     */
     detectRepeatedLetters: true,
 
     // ========================================
     // FUZZY MATCHING
     // ========================================
 
-    // Fuzzy matching is useful for catching
-    // small misspellings, but can create
-    // false positives if too aggressive.
-    fuzzyWordMatching: true,
+    /*
+     * IMPORTANT:
+     *
+     * DISABLED.
+     *
+     * This is the safest choice if Guardian
+     * should ONLY moderate confirmed banned
+     * words and obvious disguises.
+     *
+     * Fuzzy matching can mistake a normal
+     * word for something similar to a
+     * blocked word.
+     */
+    fuzzyWordMatching: false,
 
-    // IMPORTANT:
-    // Do not fuzzy-match blocked words
-    // shorter than 6 characters.
-    //
-    // Short words have too many normal
-    // words that look similar.
-    fuzzyMinimumWordLength: 6,
+    /*
+     * These remain here in case fuzzy
+     * matching is enabled later.
+     *
+     * They have no effect while
+     * fuzzyWordMatching is false.
+     */
+    fuzzyMinimumWordLength: 8,
 
-    // Allow only ONE spelling difference
-    // for shorter fuzzy-eligible words.
     fuzzyShortWordDistance: 1,
 
-    // Allow only ONE spelling difference
-    // for longer words as well.
-    //
-    // Previously this was 2, which could
-    // catch unrelated normal words.
     fuzzyLongWordDistance: 1,
 
-    // Require the first character of a fuzzy
-    // candidate to match the blocked word.
     fuzzyRequireSameFirstCharacter: true,
 
-    // Require the last character of a fuzzy
-    // candidate to match the blocked word.
     fuzzyRequireSameLastCharacter: true,
 
     // ========================================
     // BLOCKED WORD LIMITS
     // ========================================
 
-    // Maximum length allowed when adding
-    // a blocked word.
+    // Maximum length of one blocked-word entry.
     blockedWordMaxLength: 100,
 
     // ========================================
     // AUTOMATIC CATEGORY MESSAGES
     // ========================================
 
-    // Discord normal messages can contain
-    // up to 2000 characters.
+    // Discord normal message limit.
     autoMessageMaxLength: 2000,
 
     // ========================================
@@ -131,8 +169,7 @@ module.exports = {
     // ========================================
 
     // Delete up to the previous 3 hours
-    // of messages when someone triggers
-    // the configured ban channel.
+    // of messages after a ban-channel trigger.
     //
     // Discord expects seconds.
     banDeleteMessageSeconds:
