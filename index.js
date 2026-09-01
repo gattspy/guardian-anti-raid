@@ -536,35 +536,24 @@ client.on(
 // BLOCKED WORD NORMALIZATION
 // ========================================
 
-function normalizeForWordFilter(
-    text
-) {
+function normalizeForWordFilter(text) {
 
-    return String(
-        text || ""
-    )
+    return String(text || "")
 
-        // Convert many stylized Unicode fonts
-        // and full-width text to regular text.
-        .normalize(
-            "NFKC"
-        )
+        // Convert stylized Unicode fonts
+        // and full-width characters.
+        .normalize("NFKC")
 
-        // Break accented letters into base letters
-        // and combining marks.
-        .normalize(
-            "NFD"
-        )
+        // Separate accented characters.
+        .normalize("NFD")
 
-        // Remove combining marks.
+        // Remove accent / combining marks.
         .replace(
             /\p{M}/gu,
             ""
         )
 
-        .normalize(
-            "NFC"
-        )
+        .normalize("NFC")
 
         // Remove zero-width / invisible characters.
         .replace(
@@ -573,6 +562,450 @@ function normalizeForWordFilter(
         )
 
         .toLowerCase();
+}
+
+// ========================================
+// COMMON BYPASS CHARACTER REPLACEMENTS
+// ========================================
+
+function normalizeLookalikeCharacters(text) {
+
+    return normalizeForWordFilter(text)
+
+        // Common number/symbol substitutions.
+        .replace(/0/g, "o")
+        .replace(/1/g, "i")
+        .replace(/!/g, "i")
+        .replace(/3/g, "e")
+        .replace(/4/g, "a")
+        .replace(/5/g, "s")
+        .replace(/7/g, "t")
+        .replace(/8/g, "b")
+        .replace(/\$/g, "s")
+        .replace(/@/g, "a");
+}
+
+// ========================================
+// REMOVE SEPARATORS
+// ========================================
+
+function normalizeSeparatedWord(text) {
+
+    return normalizeLookalikeCharacters(
+        text
+    ).replace(
+        /[\s.\-_*~`'"]/g,
+        ""
+    );
+}
+
+// ========================================
+// REDUCE REPEATED LETTERS
+// ========================================
+
+function reduceRepeatedLetters(text) {
+
+    return String(text).replace(
+        /(.)\1{2,}/g,
+        "$1"
+    );
+}
+
+// ========================================
+// ESCAPE REGEX
+// ========================================
+
+function escapeRegExp(text) {
+
+    return String(text).replace(
+        /[.*+?^${}()|[\]\\]/g,
+        "\\$&"
+    );
+}
+
+// ========================================
+// LEVENSHTEIN DISTANCE
+// Checks small spelling changes.
+// ========================================
+
+function levenshteinDistance(
+    first,
+    second
+) {
+
+    const a =
+        String(first);
+
+    const b =
+        String(second);
+
+    const matrix =
+        Array.from(
+            {
+                length:
+                    b.length + 1
+            },
+            () =>
+                new Array(
+                    a.length + 1
+                ).fill(0)
+        );
+
+    for (
+        let i = 0;
+        i <= a.length;
+        i++
+    ) {
+
+        matrix[0][i] =
+            i;
+    }
+
+    for (
+        let j = 0;
+        j <= b.length;
+        j++
+    ) {
+
+        matrix[j][0] =
+            j;
+    }
+
+    for (
+        let j = 1;
+        j <= b.length;
+        j++
+    ) {
+
+        for (
+            let i = 1;
+            i <= a.length;
+            i++
+        ) {
+
+            const cost =
+                a[i - 1] ===
+                b[j - 1]
+                    ? 0
+                    : 1;
+
+            matrix[j][i] =
+                Math.min(
+
+                    matrix[j][i - 1] + 1,
+
+                    matrix[j - 1][i] + 1,
+
+                    matrix[j - 1][i - 1] +
+                        cost
+                );
+        }
+    }
+
+    return matrix[
+        b.length
+    ][
+        a.length
+    ];
+}
+
+// ========================================
+// FUZZY WORD CHECK
+// ========================================
+
+function isSimilarBlockedWord(
+    candidate,
+    blockedWord
+) {
+
+    const candidateClean =
+        reduceRepeatedLetters(
+            normalizeLookalikeCharacters(
+                candidate
+            )
+        );
+
+    const blockedClean =
+        reduceRepeatedLetters(
+            normalizeLookalikeCharacters(
+                blockedWord
+            )
+        );
+
+    if (
+        !candidateClean ||
+        !blockedClean
+    ) {
+        return false;
+    }
+
+    // Exact normalized match.
+    if (
+        candidateClean ===
+        blockedClean
+    ) {
+        return true;
+    }
+
+    /*
+     * Do NOT fuzzy-match very short words.
+     *
+     * This avoids false positives such as:
+     *
+     * "as" vs "ass"
+     * "bit" vs another 3-letter word
+     */
+    if (
+        blockedClean.length <
+        4
+    ) {
+        return false;
+    }
+
+    const distance =
+        levenshteinDistance(
+            candidateClean,
+            blockedClean
+        );
+
+    // 4-6 characters:
+    // allow only one changed letter.
+    if (
+        blockedClean.length <=
+        6
+    ) {
+
+        return (
+            distance <= 1
+        );
+    }
+
+    // 7+ characters:
+    // allow up to two small spelling changes.
+    return (
+        distance <= 2
+    );
+}
+
+// ========================================
+// FIND STANDALONE OR SIMILAR BLOCKED WORD
+// ========================================
+
+async function findStandaloneBlockedWord(
+    guildId,
+    content
+) {
+
+    if (
+        !guildId ||
+        !content ||
+        !databaseReady
+    ) {
+        return null;
+    }
+
+    const words =
+        await getBlockedWords(
+            guildId
+        );
+
+    if (
+        !Array.isArray(words) ||
+        words.length === 0
+    ) {
+        return null;
+    }
+
+    const normalizedContent =
+        normalizeForWordFilter(
+            content
+        );
+
+    // ====================================
+    // CHECK EACH BLOCKED WORD
+    // ====================================
+
+    for (
+        const storedWord of words
+    ) {
+
+        const cleanWord =
+            normalizeForWordFilter(
+                storedWord
+            ).trim();
+
+        if (!cleanWord) {
+            continue;
+        }
+
+        // ====================================
+        // 1. NORMAL STANDALONE MATCH
+        // ====================================
+
+        const escapedWord =
+            escapeRegExp(
+                cleanWord
+            );
+
+        const exactRegex =
+            new RegExp(
+                `(?<![\\p{L}\\p{N}_])${escapedWord}(?![\\p{L}\\p{N}_])`,
+                "iu"
+            );
+
+        if (
+            exactRegex.test(
+                normalizedContent
+            )
+        ) {
+
+            return storedWord;
+        }
+
+        // ====================================
+        // 2. LOOKALIKE CHARACTER MATCH
+        //
+        // sh1t -> shit
+        // sh!t -> shit
+        // ====================================
+
+        const lookalikeContent =
+            normalizeLookalikeCharacters(
+                content
+            );
+
+        const lookalikeWord =
+            normalizeLookalikeCharacters(
+                storedWord
+            );
+
+        const lookalikeRegex =
+            new RegExp(
+                `(?<![\\p{L}\\p{N}_])${escapeRegExp(
+                    lookalikeWord
+                )}(?![\\p{L}\\p{N}_])`,
+                "iu"
+            );
+
+        if (
+            lookalikeRegex.test(
+                lookalikeContent
+            )
+        ) {
+
+            return storedWord;
+        }
+
+        // ====================================
+        // 3. REPEATED LETTER MATCH
+        //
+        // shiiit -> shit
+        // fuuuck -> fuck
+        // ====================================
+
+        const repeatedContent =
+            reduceRepeatedLetters(
+                lookalikeContent
+            );
+
+        const repeatedWord =
+            reduceRepeatedLetters(
+                lookalikeWord
+            );
+
+        const repeatedRegex =
+            new RegExp(
+                `(?<![\\p{L}\\p{N}_])${escapeRegExp(
+                    repeatedWord
+                )}(?![\\p{L}\\p{N}_])`,
+                "iu"
+            );
+
+        if (
+            repeatedRegex.test(
+                repeatedContent
+            )
+        ) {
+
+            return storedWord;
+        }
+
+        // ====================================
+        // 4. SEPARATED LETTER MATCH
+        //
+        // s h i t
+        // s.h.i.t
+        // s-h-i-t
+        // ====================================
+
+        if (
+            cleanWord.length >=
+            3
+        ) {
+
+            const letters =
+                Array.from(
+                    normalizeLookalikeCharacters(
+                        cleanWord
+                    )
+                )
+                    .map(
+                        letter =>
+                            escapeRegExp(
+                                letter
+                            )
+                    )
+                    .join(
+                        `[\\s._*~\`'-]*`
+                    );
+
+            const separatedRegex =
+                new RegExp(
+                    `(?<![\\p{L}\\p{N}_])${letters}(?![\\p{L}\\p{N}_])`,
+                    "iu"
+                );
+
+            if (
+                separatedRegex.test(
+                    normalizedContent
+                )
+            ) {
+
+                return storedWord;
+            }
+        }
+
+        // ====================================
+        // 5. SMALL SPELLING CHANGES
+        //
+        // Only test individual words so a
+        // substring inside another normal word
+        // does not automatically trigger.
+        // ====================================
+
+        const messageWords =
+            normalizedContent.match(
+                /[\p{L}\p{N}!@$]+/gu
+            ) || [];
+
+        for (
+            const messageWord of
+            messageWords
+        ) {
+
+            if (
+                isSimilarBlockedWord(
+                    messageWord,
+                    storedWord
+                )
+            ) {
+
+                return storedWord;
+            }
+        }
+    }
+
+    return null;
 }
 
 // ========================================
