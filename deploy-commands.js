@@ -14,6 +14,7 @@ const {
 // ========================================
 
 if (!process.env.DISCORD_TOKEN) {
+
     console.error(
         "❌ DISCORD_TOKEN is missing from .env"
     );
@@ -22,6 +23,7 @@ if (!process.env.DISCORD_TOKEN) {
 }
 
 if (!process.env.CLIENT_ID) {
+
     console.error(
         "❌ CLIENT_ID is missing from .env"
     );
@@ -144,35 +146,39 @@ const commands = [
     new SlashCommandBuilder()
         .setName("word-add")
         .setDescription(
-            "Add a word to the permanent blocked-word list."
+            "Add a word to Guardian's smart blocked-word filter."
         )
         .addStringOption(option =>
             option
                 .setName("word")
                 .setDescription(
-                    "Word to block."
+                    "Word to block, including disguised variations."
                 )
+                .setMinLength(1)
+                .setMaxLength(100)
                 .setRequired(true)
         ),
 
     new SlashCommandBuilder()
         .setName("word-remove")
         .setDescription(
-            "Remove a word from the blocked-word list."
+            "Remove a word from Guardian's blocked-word filter."
         )
         .addStringOption(option =>
             option
                 .setName("word")
                 .setDescription(
-                    "Word to remove."
+                    "Blocked word to remove."
                 )
+                .setMinLength(1)
+                .setMaxLength(100)
                 .setRequired(true)
         ),
 
     new SlashCommandBuilder()
         .setName("word-list")
         .setDescription(
-            "Show the permanent blocked-word list."
+            "Show all words in Guardian's blocked-word filter."
         ),
 
     // ====================================
@@ -232,7 +238,7 @@ const commands = [
             option
                 .setName("channel")
                 .setDescription(
-                    "Channel that will trigger the automatic ban."
+                    "Text channel that will trigger the automatic ban."
                 )
                 .addChannelTypes(
                     ChannelType.GuildText
@@ -253,18 +259,22 @@ const commands = [
         )
 
 ].map(
-    command => command.toJSON()
+    command =>
+        command.toJSON()
 );
 
 // ========================================
 // DISCORD CLIENT
 // ========================================
 
-const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds
-    ]
-});
+const client =
+    new Client({
+
+        intents: [
+            GatewayIntentBits.Guilds
+        ]
+
+    });
 
 // ========================================
 // READY
@@ -274,102 +284,118 @@ client.once(
     "ready",
     async () => {
 
-        console.log(
-            "================================"
-        );
+        try {
 
-        console.log(
-            "🛡️ GUARDIAN COMMAND DEPLOYER"
-        );
-
-        console.log(
-            "================================"
-        );
-
-        console.log(
-            `✅ Logged in as ${client.user.tag}`
-        );
-
-        console.log(
-            `📡 Found ${client.guilds.cache.size} server(s)`
-        );
-
-        console.log(
-            `📋 Preparing ${commands.length} command(s)`
-        );
-
-        const rest =
-            new REST({
-                version: "10"
-            }).setToken(
-                process.env.DISCORD_TOKEN
+            console.log(
+                "================================"
             );
 
-        // ====================================
-        // REGISTER COMMANDS
-        // ====================================
+            console.log(
+                "🛡️ GUARDIAN COMMAND DEPLOYER"
+            );
 
-        for (
-            const guild of
-            client.guilds.cache.values()
-        ) {
+            console.log(
+                "================================"
+            );
 
-            try {
+            console.log(
+                `✅ Logged in as ${client.user.tag}`
+            );
 
-                console.log(
-                    `🔄 Registering ${commands.length} commands in: ${guild.name}`
+            console.log(
+                `📡 Found ${client.guilds.cache.size} server(s)`
+            );
+
+            console.log(
+                `📋 Preparing ${commands.length} command(s)`
+            );
+
+            const rest =
+                new REST({
+                    version: "10"
+                }).setToken(
+                    process.env.DISCORD_TOKEN
                 );
 
-                await rest.put(
-                    Routes.applicationGuildCommands(
-                        process.env.CLIENT_ID,
-                        guild.id
-                    ),
-                    {
-                        body: commands
-                    }
-                );
+            // ====================================
+            // REGISTER COMMANDS
+            // ====================================
 
-                console.log(
-                    `✅ Commands registered in: ${guild.name}`
-                );
+            for (
+                const guild of
+                client.guilds.cache.values()
+            ) {
 
-            } catch (error) {
+                try {
 
-                console.error(
-                    `❌ Failed to register commands in ${guild.name}:`
-                );
+                    console.log(
+                        `🔄 Registering ${commands.length} commands in: ${guild.name}`
+                    );
 
-                console.error(
-                    error
-                );
+                    await rest.put(
+                        Routes.applicationGuildCommands(
+                            process.env.CLIENT_ID,
+                            guild.id
+                        ),
+                        {
+                            body:
+                                commands
+                        }
+                    );
+
+                    console.log(
+                        `✅ Commands registered in: ${guild.name}`
+                    );
+
+                } catch (error) {
+
+                    console.error(
+                        `❌ Failed to register commands in ${guild.name}:`
+                    );
+
+                    console.error(
+                        error
+                    );
+                }
             }
+
+            console.log(
+                "================================"
+            );
+
+            console.log(
+                "✅ COMMAND DEPLOYMENT COMPLETE"
+            );
+
+            console.log(
+                `📋 ${commands.length} commands deployed`
+            );
+
+            console.log(
+                "================================"
+            );
+
+        } catch (error) {
+
+            console.error(
+                "❌ Command deployment failed:"
+            );
+
+            console.error(
+                error
+            );
+
+        } finally {
+
+            client.destroy();
+
+            process.exit(0);
         }
-
-        console.log(
-            "================================"
-        );
-
-        console.log(
-            "✅ COMMAND DEPLOYMENT COMPLETE"
-        );
-
-        console.log(
-            `📋 ${commands.length} commands deployed`
-        );
-
-        console.log(
-            "================================"
-        );
-
-        client.destroy();
-
-        process.exit(0);
     }
 );
 
 // ========================================
-// ERROR
+// DISCORD ERROR
 // ========================================
 
 client.on(
@@ -378,6 +404,21 @@ client.on(
 
         console.error(
             "❌ Discord client error:",
+            error
+        );
+    }
+);
+
+// ========================================
+// UNHANDLED ERRORS
+// ========================================
+
+process.on(
+    "unhandledRejection",
+    error => {
+
+        console.error(
+            "❌ Unhandled promise rejection:",
             error
         );
     }
