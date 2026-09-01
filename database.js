@@ -14,43 +14,65 @@ if (!process.env.DATABASE_URL) {
     process.exit(1);
 }
 
-const pool = new Pool({
-    connectionString:
-        process.env.DATABASE_URL,
+const pool =
+    new Pool({
+        connectionString:
+            process.env.DATABASE_URL,
 
-    ssl: {
-        rejectUnauthorized: false
-    },
+        ssl: {
+            rejectUnauthorized:
+                false
+        },
 
-    max: 10,
+        max:
+            10,
 
-    idleTimeoutMillis:
-        30000,
+        idleTimeoutMillis:
+            30000,
 
-    connectionTimeoutMillis:
-        10000
-});
+        connectionTimeoutMillis:
+            10000
+    });
 
-let databaseReady = false;
+let databaseReady =
+    false;
 
 // ========================================
-// HELPERS
+// BASIC HELPERS
 // ========================================
 
 function cleanText(
     value
 ) {
     return String(
-        value || ""
+        value ?? ""
     ).trim();
 }
 
-function cleanLower(
-    value
+function getServerId(
+    guild
 ) {
-    return cleanText(
-        value
-    ).toLowerCase();
+    if (!guild) {
+        return null;
+    }
+
+    if (
+        typeof guild ===
+        "string"
+    ) {
+        return guild.trim() ||
+            null;
+    }
+
+    if (
+        typeof guild.id ===
+        "string"
+    ) {
+        return guild.id.trim() ||
+            null;
+    }
+
+    return null;
 }
 
 // ========================================
@@ -61,48 +83,37 @@ function normalizeForWordFilter(
     text
 ) {
     return String(
-        text || ""
+        text ?? ""
     )
-
-        // Convert stylized Unicode fonts
-        // and full-width characters.
-        .normalize("NFKC")
-
-        // Separate accented characters.
-        .normalize("NFD")
-
-        // Remove accent / combining marks.
-        .replace(
-            /\p{M}/gu,
-            ""
-        )
-
-        .normalize("NFC")
-
-        // Remove invisible characters.
-        .replace(
-            /[\u200B-\u200D\u2060\uFEFF]/g,
-            ""
-        )
-
-        .toLowerCase()
-
-        .trim();
+        .trim()
+        .toLowerCase();
 }
 
 // ========================================
-// ESCAPE REGEX
+// REGEX ESCAPE
 // ========================================
 
 function escapeRegExp(
     text
 ) {
     return String(
-        text || ""
+        text ?? ""
     ).replace(
         /[.*+?^${}()|[\]\\]/g,
         "\\$&"
     );
+}
+
+// ========================================
+// DATABASE READY CHECK
+// ========================================
+
+function requireDatabase() {
+    if (!databaseReady) {
+        throw new Error(
+            "Database is not ready."
+        );
+    }
 }
 
 // ========================================
@@ -114,6 +125,9 @@ async function initDatabase() {
         await pool.connect();
 
     try {
+        databaseReady =
+            false;
+
         console.log(
             "🔄 Creating/checking PostgreSQL tables..."
         );
@@ -126,7 +140,7 @@ async function initDatabase() {
             CREATE TABLE IF NOT EXISTS blocked_words (
                 guild_id TEXT NOT NULL,
                 word TEXT NOT NULL,
-                created_at TIMESTAMPTZ DEFAULT NOW(),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
                 PRIMARY KEY (
                     guild_id,
@@ -143,7 +157,7 @@ async function initDatabase() {
             CREATE TABLE IF NOT EXISTS authorized_users (
                 guild_id TEXT NOT NULL,
                 user_id TEXT NOT NULL,
-                created_at TIMESTAMPTZ DEFAULT NOW(),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
                 PRIMARY KEY (
                     guild_id,
@@ -160,7 +174,7 @@ async function initDatabase() {
             CREATE TABLE IF NOT EXISTS unauthorized_users (
                 guild_id TEXT NOT NULL,
                 user_id TEXT NOT NULL,
-                created_at TIMESTAMPTZ DEFAULT NOW(),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
                 PRIMARY KEY (
                     guild_id,
@@ -177,7 +191,7 @@ async function initDatabase() {
             CREATE TABLE IF NOT EXISTS authorized_roles (
                 guild_id TEXT NOT NULL,
                 role_id TEXT NOT NULL,
-                created_at TIMESTAMPTZ DEFAULT NOW(),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
                 PRIMARY KEY (
                     guild_id,
@@ -194,7 +208,7 @@ async function initDatabase() {
             CREATE TABLE IF NOT EXISTS unauthorized_roles (
                 guild_id TEXT NOT NULL,
                 role_id TEXT NOT NULL,
-                created_at TIMESTAMPTZ DEFAULT NOW(),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
                 PRIMARY KEY (
                     guild_id,
@@ -212,8 +226,8 @@ async function initDatabase() {
                 guild_id TEXT NOT NULL,
                 category_id TEXT NOT NULL,
                 message TEXT NOT NULL,
-                created_at TIMESTAMPTZ DEFAULT NOW(),
-                updated_at TIMESTAMPTZ DEFAULT NOW(),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
                 PRIMARY KEY (
                     guild_id,
@@ -223,15 +237,15 @@ async function initDatabase() {
         `);
 
         // ====================================
-        // BAN TRIGGER CHANNEL
+        // BAN TRIGGER CHANNELS
         // ====================================
 
         await client.query(`
             CREATE TABLE IF NOT EXISTS ban_trigger_channels (
                 guild_id TEXT PRIMARY KEY,
                 channel_id TEXT NOT NULL,
-                created_at TIMESTAMPTZ DEFAULT NOW(),
-                updated_at TIMESTAMPTZ DEFAULT NOW()
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
         `);
 
@@ -258,6 +272,8 @@ async function initDatabase() {
             "✅ Ban-trigger channel table ready."
         );
 
+        return true;
+
     } catch (error) {
         databaseReady =
             false;
@@ -279,15 +295,11 @@ async function initDatabase() {
 // ========================================
 
 async function testDatabase() {
-    if (!databaseReady) {
-        throw new Error(
-            "Database is not ready."
-        );
-    }
+    requireDatabase();
 
     const result =
         await pool.query(
-            "SELECT NOW() AS time"
+            "SELECT NOW() AS time;"
         );
 
     console.log(
@@ -310,18 +322,20 @@ function isDatabaseReady() {
 // ========================================
 
 async function addBlockedWord(
-    guildId,
+    guild,
     word
 ) {
-    if (!databaseReady) {
-        throw new Error(
-            "Database is not ready."
+    requireDatabase();
+
+    const serverId =
+        getServerId(
+            guild
         );
-    }
 
     if (
-        !guildId ||
-        typeof word !== "string"
+        !serverId ||
+        typeof word !==
+            "string"
     ) {
         return false;
     }
@@ -335,20 +349,20 @@ async function addBlockedWord(
         return false;
     }
 
-    // Prevent very large entries.
     if (
-        cleanWord.length > 100
+        cleanWord.length >
+        100
     ) {
         return false;
     }
 
-    /*
-     * Prevent accidental multi-line
-     * blocked-word entries.
-     */
     if (
-        cleanWord.includes("\n") ||
-        cleanWord.includes("\r")
+        cleanWord.includes(
+            "\n"
+        ) ||
+        cleanWord.includes(
+            "\r"
+        )
     ) {
         return false;
     }
@@ -356,30 +370,34 @@ async function addBlockedWord(
     const result =
         await pool.query(
             `
-            INSERT INTO blocked_words
-                (
-                    guild_id,
-                    word
-                )
+            INSERT INTO blocked_words (
+                guild_id,
+                word
+            )
 
-            VALUES
-                ($1, $2)
+            VALUES (
+                $1,
+                $2
+            )
 
-            ON CONFLICT
-                (guild_id, word)
+            ON CONFLICT (
+                guild_id,
+                word
+            )
 
             DO NOTHING
 
             RETURNING word;
             `,
             [
-                guildId,
+                serverId,
                 cleanWord
             ]
         );
 
     return (
-        result.rowCount > 0
+        result.rowCount >
+        0
     );
 }
 
@@ -388,18 +406,20 @@ async function addBlockedWord(
 // ========================================
 
 async function removeBlockedWord(
-    guildId,
+    guild,
     word
 ) {
-    if (!databaseReady) {
-        throw new Error(
-            "Database is not ready."
+    requireDatabase();
+
+    const serverId =
+        getServerId(
+            guild
         );
-    }
 
     if (
-        !guildId ||
-        typeof word !== "string"
+        !serverId ||
+        typeof word !==
+            "string"
     ) {
         return false;
     }
@@ -424,13 +444,14 @@ async function removeBlockedWord(
             RETURNING word;
             `,
             [
-                guildId,
+                serverId,
                 cleanWord
             ]
         );
 
     return (
-        result.rowCount > 0
+        result.rowCount >
+        0
     );
 }
 
@@ -439,15 +460,16 @@ async function removeBlockedWord(
 // ========================================
 
 async function getBlockedWords(
-    guildId
+    guild
 ) {
-    if (!databaseReady) {
-        throw new Error(
-            "Database is not ready."
-        );
-    }
+    requireDatabase();
 
-    if (!guildId) {
+    const serverId =
+        getServerId(
+            guild
+        );
+
+    if (!serverId) {
         return [];
     }
 
@@ -463,7 +485,7 @@ async function getBlockedWords(
             ORDER BY word ASC;
             `,
             [
-                guildId
+                serverId
             ]
         );
 
@@ -475,25 +497,31 @@ async function getBlockedWords(
                 )
         )
         .filter(
-            word =>
-                Boolean(word)
+            Boolean
         );
 }
 
 // ========================================
-// SAFE EXACT BLOCKED-WORD MATCH
+// EXACT BLOCKED-WORD MATCH
 // ========================================
 
 async function findBlockedWord(
-    guildId,
+    guild,
     content
 ) {
     if (!databaseReady) {
         return null;
     }
 
+    const serverId =
+        getServerId(
+            guild
+        );
+
     if (
-        !guildId ||
+        !serverId ||
+        typeof content !==
+            "string" ||
         !content
     ) {
         return null;
@@ -501,7 +529,7 @@ async function findBlockedWord(
 
     const words =
         await getBlockedWords(
-            guildId
+            serverId
         );
 
     if (
@@ -517,27 +545,12 @@ async function findBlockedWord(
         );
 
     for (
-        const blockedWord of
-        words
+        const blockedWord of words
     ) {
         if (!blockedWord) {
             continue;
         }
 
-        /*
-         * Whole-word matching only.
-         *
-         * If "ass" is blocked:
-         *
-         * ass       -> BLOCK
-         * ASS       -> BLOCK
-         * an ass!   -> BLOCK
-         *
-         * class     -> ALLOW
-         * grass     -> ALLOW
-         * glasses   -> ALLOW
-         * assassin  -> ALLOW
-         */
         const regex =
             new RegExp(
                 `(?<![\\p{L}\\p{N}_])${escapeRegExp(
@@ -563,63 +576,96 @@ async function findBlockedWord(
 // ========================================
 
 async function authorizeUser(
-    guildId,
+    guild,
     userId
 ) {
-    if (!databaseReady) {
-        throw new Error(
-            "Database is not ready."
+    requireDatabase();
+
+    const serverId =
+        getServerId(
+            guild
         );
-    }
+
+    const cleanUserId =
+        cleanText(
+            userId
+        );
 
     if (
-        !guildId ||
-        !userId
+        !serverId ||
+        !cleanUserId
     ) {
         return false;
     }
 
-    await pool.query(
-        `
-        DELETE FROM unauthorized_users
+    const client =
+        await pool.connect();
 
-        WHERE guild_id = $1
-        AND user_id = $2;
-        `,
-        [
-            guildId,
-            userId
-        ]
-    );
+    try {
+        await client.query(
+            "BEGIN"
+        );
 
-    const result =
-        await pool.query(
+        await client.query(
             `
-            INSERT INTO authorized_users
-                (
+            DELETE FROM unauthorized_users
+
+            WHERE guild_id = $1
+            AND user_id = $2;
+            `,
+            [
+                serverId,
+                cleanUserId
+            ]
+        );
+
+        const result =
+            await client.query(
+                `
+                INSERT INTO authorized_users (
                     guild_id,
                     user_id
                 )
 
-            VALUES
-                ($1, $2)
+                VALUES (
+                    $1,
+                    $2
+                )
 
-            ON CONFLICT
-                (guild_id, user_id)
+                ON CONFLICT (
+                    guild_id,
+                    user_id
+                )
 
-            DO NOTHING
+                DO NOTHING
 
-            RETURNING user_id;
-            `,
-            [
-                guildId,
-                userId
-            ]
+                RETURNING user_id;
+                `,
+                [
+                    serverId,
+                    cleanUserId
+                ]
+            );
+
+        await client.query(
+            "COMMIT"
         );
 
-    return (
-        result.rowCount > 0
-    );
+        return (
+            result.rowCount >
+            0
+        );
+
+    } catch (error) {
+        await client.query(
+            "ROLLBACK"
+        );
+
+        throw error;
+
+    } finally {
+        client.release();
+    }
 }
 
 // ========================================
@@ -627,63 +673,96 @@ async function authorizeUser(
 // ========================================
 
 async function unauthorizeUser(
-    guildId,
+    guild,
     userId
 ) {
-    if (!databaseReady) {
-        throw new Error(
-            "Database is not ready."
+    requireDatabase();
+
+    const serverId =
+        getServerId(
+            guild
         );
-    }
+
+    const cleanUserId =
+        cleanText(
+            userId
+        );
 
     if (
-        !guildId ||
-        !userId
+        !serverId ||
+        !cleanUserId
     ) {
         return false;
     }
 
-    await pool.query(
-        `
-        DELETE FROM authorized_users
+    const client =
+        await pool.connect();
 
-        WHERE guild_id = $1
-        AND user_id = $2;
-        `,
-        [
-            guildId,
-            userId
-        ]
-    );
+    try {
+        await client.query(
+            "BEGIN"
+        );
 
-    const result =
-        await pool.query(
+        await client.query(
             `
-            INSERT INTO unauthorized_users
-                (
+            DELETE FROM authorized_users
+
+            WHERE guild_id = $1
+            AND user_id = $2;
+            `,
+            [
+                serverId,
+                cleanUserId
+            ]
+        );
+
+        const result =
+            await client.query(
+                `
+                INSERT INTO unauthorized_users (
                     guild_id,
                     user_id
                 )
 
-            VALUES
-                ($1, $2)
+                VALUES (
+                    $1,
+                    $2
+                )
 
-            ON CONFLICT
-                (guild_id, user_id)
+                ON CONFLICT (
+                    guild_id,
+                    user_id
+                )
 
-            DO NOTHING
+                DO NOTHING
 
-            RETURNING user_id;
-            `,
-            [
-                guildId,
-                userId
-            ]
+                RETURNING user_id;
+                `,
+                [
+                    serverId,
+                    cleanUserId
+                ]
+            );
+
+        await client.query(
+            "COMMIT"
         );
 
-    return (
-        result.rowCount > 0
-    );
+        return (
+            result.rowCount >
+            0
+        );
+
+    } catch (error) {
+        await client.query(
+            "ROLLBACK"
+        );
+
+        throw error;
+
+    } finally {
+        client.release();
+    }
 }
 
 // ========================================
@@ -691,16 +770,26 @@ async function unauthorizeUser(
 // ========================================
 
 async function isAuthorizedUser(
-    guildId,
+    guild,
     userId
 ) {
     if (!databaseReady) {
         return false;
     }
 
+    const serverId =
+        getServerId(
+            guild
+        );
+
+    const cleanUserId =
+        cleanText(
+            userId
+        );
+
     if (
-        !guildId ||
-        !userId
+        !serverId ||
+        !cleanUserId
     ) {
         return false;
     }
@@ -718,13 +807,14 @@ async function isAuthorizedUser(
             LIMIT 1;
             `,
             [
-                guildId,
-                userId
+                serverId,
+                cleanUserId
             ]
         );
 
     return (
-        result.rowCount > 0
+        result.rowCount >
+        0
     );
 }
 
@@ -733,16 +823,26 @@ async function isAuthorizedUser(
 // ========================================
 
 async function isUnauthorizedUser(
-    guildId,
+    guild,
     userId
 ) {
     if (!databaseReady) {
         return false;
     }
 
+    const serverId =
+        getServerId(
+            guild
+        );
+
+    const cleanUserId =
+        cleanText(
+            userId
+        );
+
     if (
-        !guildId ||
-        !userId
+        !serverId ||
+        !cleanUserId
     ) {
         return false;
     }
@@ -760,13 +860,14 @@ async function isUnauthorizedUser(
             LIMIT 1;
             `,
             [
-                guildId,
-                userId
+                serverId,
+                cleanUserId
             ]
         );
 
     return (
-        result.rowCount > 0
+        result.rowCount >
+        0
     );
 }
 
@@ -775,15 +876,16 @@ async function isUnauthorizedUser(
 // ========================================
 
 async function getAuthorizedUsers(
-    guildId
+    guild
 ) {
-    if (!databaseReady) {
-        throw new Error(
-            "Database is not ready."
-        );
-    }
+    requireDatabase();
 
-    if (!guildId) {
+    const serverId =
+        getServerId(
+            guild
+        );
+
+    if (!serverId) {
         return [];
     }
 
@@ -799,7 +901,7 @@ async function getAuthorizedUsers(
             ORDER BY created_at ASC;
             `,
             [
-                guildId
+                serverId
             ]
         );
 
@@ -814,15 +916,16 @@ async function getAuthorizedUsers(
 // ========================================
 
 async function getUnauthorizedUsers(
-    guildId
+    guild
 ) {
-    if (!databaseReady) {
-        throw new Error(
-            "Database is not ready."
-        );
-    }
+    requireDatabase();
 
-    if (!guildId) {
+    const serverId =
+        getServerId(
+            guild
+        );
+
+    if (!serverId) {
         return [];
     }
 
@@ -838,7 +941,7 @@ async function getUnauthorizedUsers(
             ORDER BY created_at ASC;
             `,
             [
-                guildId
+                serverId
             ]
         );
 
@@ -853,63 +956,96 @@ async function getUnauthorizedUsers(
 // ========================================
 
 async function authorizeRole(
-    guildId,
+    guild,
     roleId
 ) {
-    if (!databaseReady) {
-        throw new Error(
-            "Database is not ready."
+    requireDatabase();
+
+    const serverId =
+        getServerId(
+            guild
         );
-    }
+
+    const cleanRoleId =
+        cleanText(
+            roleId
+        );
 
     if (
-        !guildId ||
-        !roleId
+        !serverId ||
+        !cleanRoleId
     ) {
         return false;
     }
 
-    await pool.query(
-        `
-        DELETE FROM unauthorized_roles
+    const client =
+        await pool.connect();
 
-        WHERE guild_id = $1
-        AND role_id = $2;
-        `,
-        [
-            guildId,
-            roleId
-        ]
-    );
+    try {
+        await client.query(
+            "BEGIN"
+        );
 
-    const result =
-        await pool.query(
+        await client.query(
             `
-            INSERT INTO authorized_roles
-                (
+            DELETE FROM unauthorized_roles
+
+            WHERE guild_id = $1
+            AND role_id = $2;
+            `,
+            [
+                serverId,
+                cleanRoleId
+            ]
+        );
+
+        const result =
+            await client.query(
+                `
+                INSERT INTO authorized_roles (
                     guild_id,
                     role_id
                 )
 
-            VALUES
-                ($1, $2)
+                VALUES (
+                    $1,
+                    $2
+                )
 
-            ON CONFLICT
-                (guild_id, role_id)
+                ON CONFLICT (
+                    guild_id,
+                    role_id
+                )
 
-            DO NOTHING
+                DO NOTHING
 
-            RETURNING role_id;
-            `,
-            [
-                guildId,
-                roleId
-            ]
+                RETURNING role_id;
+                `,
+                [
+                    serverId,
+                    cleanRoleId
+                ]
+            );
+
+        await client.query(
+            "COMMIT"
         );
 
-    return (
-        result.rowCount > 0
-    );
+        return (
+            result.rowCount >
+            0
+        );
+
+    } catch (error) {
+        await client.query(
+            "ROLLBACK"
+        );
+
+        throw error;
+
+    } finally {
+        client.release();
+    }
 }
 
 // ========================================
@@ -917,63 +1053,96 @@ async function authorizeRole(
 // ========================================
 
 async function unauthorizeRole(
-    guildId,
+    guild,
     roleId
 ) {
-    if (!databaseReady) {
-        throw new Error(
-            "Database is not ready."
+    requireDatabase();
+
+    const serverId =
+        getServerId(
+            guild
         );
-    }
+
+    const cleanRoleId =
+        cleanText(
+            roleId
+        );
 
     if (
-        !guildId ||
-        !roleId
+        !serverId ||
+        !cleanRoleId
     ) {
         return false;
     }
 
-    await pool.query(
-        `
-        DELETE FROM authorized_roles
+    const client =
+        await pool.connect();
 
-        WHERE guild_id = $1
-        AND role_id = $2;
-        `,
-        [
-            guildId,
-            roleId
-        ]
-    );
+    try {
+        await client.query(
+            "BEGIN"
+        );
 
-    const result =
-        await pool.query(
+        await client.query(
             `
-            INSERT INTO unauthorized_roles
-                (
+            DELETE FROM authorized_roles
+
+            WHERE guild_id = $1
+            AND role_id = $2;
+            `,
+            [
+                serverId,
+                cleanRoleId
+            ]
+        );
+
+        const result =
+            await client.query(
+                `
+                INSERT INTO unauthorized_roles (
                     guild_id,
                     role_id
                 )
 
-            VALUES
-                ($1, $2)
+                VALUES (
+                    $1,
+                    $2
+                )
 
-            ON CONFLICT
-                (guild_id, role_id)
+                ON CONFLICT (
+                    guild_id,
+                    role_id
+                )
 
-            DO NOTHING
+                DO NOTHING
 
-            RETURNING role_id;
-            `,
-            [
-                guildId,
-                roleId
-            ]
+                RETURNING role_id;
+                `,
+                [
+                    serverId,
+                    cleanRoleId
+                ]
+            );
+
+        await client.query(
+            "COMMIT"
         );
 
-    return (
-        result.rowCount > 0
-    );
+        return (
+            result.rowCount >
+            0
+        );
+
+    } catch (error) {
+        await client.query(
+            "ROLLBACK"
+        );
+
+        throw error;
+
+    } finally {
+        client.release();
+    }
 }
 
 // ========================================
@@ -981,16 +1150,26 @@ async function unauthorizeRole(
 // ========================================
 
 async function isAuthorizedRole(
-    guildId,
+    guild,
     roleId
 ) {
     if (!databaseReady) {
         return false;
     }
 
+    const serverId =
+        getServerId(
+            guild
+        );
+
+    const cleanRoleId =
+        cleanText(
+            roleId
+        );
+
     if (
-        !guildId ||
-        !roleId
+        !serverId ||
+        !cleanRoleId
     ) {
         return false;
     }
@@ -1008,13 +1187,14 @@ async function isAuthorizedRole(
             LIMIT 1;
             `,
             [
-                guildId,
-                roleId
+                serverId,
+                cleanRoleId
             ]
         );
 
     return (
-        result.rowCount > 0
+        result.rowCount >
+        0
     );
 }
 
@@ -1023,16 +1203,26 @@ async function isAuthorizedRole(
 // ========================================
 
 async function isUnauthorizedRole(
-    guildId,
+    guild,
     roleId
 ) {
     if (!databaseReady) {
         return false;
     }
 
+    const serverId =
+        getServerId(
+            guild
+        );
+
+    const cleanRoleId =
+        cleanText(
+            roleId
+        );
+
     if (
-        !guildId ||
-        !roleId
+        !serverId ||
+        !cleanRoleId
     ) {
         return false;
     }
@@ -1050,13 +1240,14 @@ async function isUnauthorizedRole(
             LIMIT 1;
             `,
             [
-                guildId,
-                roleId
+                serverId,
+                cleanRoleId
             ]
         );
 
     return (
-        result.rowCount > 0
+        result.rowCount >
+        0
     );
 }
 
@@ -1065,15 +1256,16 @@ async function isUnauthorizedRole(
 // ========================================
 
 async function getAuthorizedRoles(
-    guildId
+    guild
 ) {
-    if (!databaseReady) {
-        throw new Error(
-            "Database is not ready."
-        );
-    }
+    requireDatabase();
 
-    if (!guildId) {
+    const serverId =
+        getServerId(
+            guild
+        );
+
+    if (!serverId) {
         return [];
     }
 
@@ -1089,7 +1281,7 @@ async function getAuthorizedRoles(
             ORDER BY created_at ASC;
             `,
             [
-                guildId
+                serverId
             ]
         );
 
@@ -1104,15 +1296,16 @@ async function getAuthorizedRoles(
 // ========================================
 
 async function getUnauthorizedRoles(
-    guildId
+    guild
 ) {
-    if (!databaseReady) {
-        throw new Error(
-            "Database is not ready."
-        );
-    }
+    requireDatabase();
 
-    if (!guildId) {
+    const serverId =
+        getServerId(
+            guild
+        );
+
+    if (!serverId) {
         return [];
     }
 
@@ -1128,7 +1321,7 @@ async function getUnauthorizedRoles(
             ORDER BY created_at ASC;
             `,
             [
-                guildId
+                serverId
             ]
         );
 
@@ -1143,15 +1336,21 @@ async function getUnauthorizedRoles(
 // ========================================
 
 async function setAutoCategoryMessage(
-    guildId,
+    guild,
     categoryId,
     message
 ) {
-    if (!databaseReady) {
-        throw new Error(
-            "Database is not ready."
+    requireDatabase();
+
+    const serverId =
+        getServerId(
+            guild
         );
-    }
+
+    const cleanCategoryId =
+        cleanText(
+            categoryId
+        );
 
     const cleanMessage =
         cleanText(
@@ -1159,8 +1358,8 @@ async function setAutoCategoryMessage(
         );
 
     if (
-        !guildId ||
-        !categoryId ||
+        !serverId ||
+        !cleanCategoryId ||
         !cleanMessage
     ) {
         return false;
@@ -1176,37 +1375,44 @@ async function setAutoCategoryMessage(
     const result =
         await pool.query(
             `
-            INSERT INTO auto_category_messages
-                (
-                    guild_id,
-                    category_id,
-                    message,
-                    updated_at
-                )
+            INSERT INTO auto_category_messages (
+                guild_id,
+                category_id,
+                message,
+                updated_at
+            )
 
-            VALUES
-                ($1, $2, $3, NOW())
+            VALUES (
+                $1,
+                $2,
+                $3,
+                NOW()
+            )
 
-            ON CONFLICT
-                (guild_id, category_id)
+            ON CONFLICT (
+                guild_id,
+                category_id
+            )
 
             DO UPDATE SET
                 message =
                     EXCLUDED.message,
+
                 updated_at =
                     NOW()
 
             RETURNING category_id;
             `,
             [
-                guildId,
-                categoryId,
+                serverId,
+                cleanCategoryId,
                 cleanMessage
             ]
         );
 
     return (
-        result.rowCount > 0
+        result.rowCount >
+        0
     );
 }
 
@@ -1215,18 +1421,24 @@ async function setAutoCategoryMessage(
 // ========================================
 
 async function removeAutoCategoryMessage(
-    guildId,
+    guild,
     categoryId
 ) {
-    if (!databaseReady) {
-        throw new Error(
-            "Database is not ready."
+    requireDatabase();
+
+    const serverId =
+        getServerId(
+            guild
         );
-    }
+
+    const cleanCategoryId =
+        cleanText(
+            categoryId
+        );
 
     if (
-        !guildId ||
-        !categoryId
+        !serverId ||
+        !cleanCategoryId
     ) {
         return false;
     }
@@ -1242,13 +1454,14 @@ async function removeAutoCategoryMessage(
             RETURNING category_id;
             `,
             [
-                guildId,
-                categoryId
+                serverId,
+                cleanCategoryId
             ]
         );
 
     return (
-        result.rowCount > 0
+        result.rowCount >
+        0
     );
 }
 
@@ -1257,18 +1470,24 @@ async function removeAutoCategoryMessage(
 // ========================================
 
 async function getAutoCategoryMessage(
-    guildId,
+    guild,
     categoryId
 ) {
-    if (!databaseReady) {
-        throw new Error(
-            "Database is not ready."
+    requireDatabase();
+
+    const serverId =
+        getServerId(
+            guild
         );
-    }
+
+    const cleanCategoryId =
+        cleanText(
+            categoryId
+        );
 
     if (
-        !guildId ||
-        !categoryId
+        !serverId ||
+        !cleanCategoryId
     ) {
         return null;
     }
@@ -1286,19 +1505,21 @@ async function getAutoCategoryMessage(
             LIMIT 1;
             `,
             [
-                guildId,
-                categoryId
+                serverId,
+                cleanCategoryId
             ]
         );
 
     if (
-        result.rowCount === 0
+        result.rowCount ===
+        0
     ) {
         return null;
     }
 
     return (
-        result.rows[0].message
+        result.rows[0].message ??
+        null
     );
 }
 
@@ -1307,15 +1528,16 @@ async function getAutoCategoryMessage(
 // ========================================
 
 async function getAutoCategoryMessages(
-    guildId
+    guild
 ) {
-    if (!databaseReady) {
-        throw new Error(
-            "Database is not ready."
-        );
-    }
+    requireDatabase();
 
-    if (!guildId) {
+    const serverId =
+        getServerId(
+            guild
+        );
+
+    if (!serverId) {
         return [];
     }
 
@@ -1335,7 +1557,7 @@ async function getAutoCategoryMessages(
             ORDER BY created_at ASC;
             `,
             [
-                guildId
+                serverId
             ]
         );
 
@@ -1347,18 +1569,24 @@ async function getAutoCategoryMessages(
 // ========================================
 
 async function setBanTriggerChannel(
-    guildId,
+    guild,
     channelId
 ) {
-    if (!databaseReady) {
-        throw new Error(
-            "Database is not ready."
+    requireDatabase();
+
+    const serverId =
+        getServerId(
+            guild
         );
-    }
+
+    const cleanChannelId =
+        cleanText(
+            channelId
+        );
 
     if (
-        !guildId ||
-        !channelId
+        !serverId ||
+        !cleanChannelId
     ) {
         return false;
     }
@@ -1366,35 +1594,40 @@ async function setBanTriggerChannel(
     const result =
         await pool.query(
             `
-            INSERT INTO ban_trigger_channels
-                (
-                    guild_id,
-                    channel_id,
-                    updated_at
-                )
+            INSERT INTO ban_trigger_channels (
+                guild_id,
+                channel_id,
+                updated_at
+            )
 
-            VALUES
-                ($1, $2, NOW())
+            VALUES (
+                $1,
+                $2,
+                NOW()
+            )
 
-            ON CONFLICT
-                (guild_id)
+            ON CONFLICT (
+                guild_id
+            )
 
             DO UPDATE SET
                 channel_id =
                     EXCLUDED.channel_id,
+
                 updated_at =
                     NOW()
 
             RETURNING channel_id;
             `,
             [
-                guildId,
-                channelId
+                serverId,
+                cleanChannelId
             ]
         );
 
     return (
-        result.rowCount > 0
+        result.rowCount >
+        0
     );
 }
 
@@ -1403,15 +1636,16 @@ async function setBanTriggerChannel(
 // ========================================
 
 async function removeBanTriggerChannel(
-    guildId
+    guild
 ) {
-    if (!databaseReady) {
-        throw new Error(
-            "Database is not ready."
-        );
-    }
+    requireDatabase();
 
-    if (!guildId) {
+    const serverId =
+        getServerId(
+            guild
+        );
+
+    if (!serverId) {
         return false;
     }
 
@@ -1425,12 +1659,13 @@ async function removeBanTriggerChannel(
             RETURNING channel_id;
             `,
             [
-                guildId
+                serverId
             ]
         );
 
     return (
-        result.rowCount > 0
+        result.rowCount >
+        0
     );
 }
 
@@ -1439,15 +1674,16 @@ async function removeBanTriggerChannel(
 // ========================================
 
 async function getBanTriggerChannel(
-    guildId
+    guild
 ) {
-    if (!databaseReady) {
-        throw new Error(
-            "Database is not ready."
-        );
-    }
+    requireDatabase();
 
-    if (!guildId) {
+    const serverId =
+        getServerId(
+            guild
+        );
+
+    if (!serverId) {
         return null;
     }
 
@@ -1463,18 +1699,20 @@ async function getBanTriggerChannel(
             LIMIT 1;
             `,
             [
-                guildId
+                serverId
             ]
         );
 
     if (
-        result.rowCount === 0
+        result.rowCount ===
+        0
     ) {
         return null;
     }
 
     return (
-        result.rows[0].channel_id
+        result.rows[0].channel_id ??
+        null
     );
 }
 
@@ -1507,6 +1745,7 @@ module.exports = {
     isDatabaseReady,
 
     // Helpers
+    getServerId,
     normalizeForWordFilter,
 
     // Blocked words
