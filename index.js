@@ -2453,29 +2453,6 @@ Channel: ${channel}
             }
 
             // ====================================
-            // UNKNOWN COMMAND FALLBACK
-            // ====================================
-
-            await safeReply(
-                interaction,
-                `❌ Guardian does not have a handler for \`/${command}\`.`
-            );
-
-        } catch (error) {
-            console.error(
-                "❌ Interaction command error:",
-                error
-            );
-
-            await safeReply(
-                interaction,
-                "❌ Something went wrong while processing that command."
-            );
-        }
-    }
-);
-
-// ====================================
 // /AUTHORIZE
 // ====================================
 
@@ -2508,7 +2485,7 @@ if (
 
     const result =
         await authorizeUser(
-            interaction.guild.id,
+            interaction.guild,
             user.id
         );
 
@@ -2555,7 +2532,7 @@ if (
 
     const result =
         await unauthorizeUser(
-            interaction.guild.id,
+            interaction.guild,
             user.id
         );
 
@@ -2591,6 +2568,10 @@ if (
         return;
     }
 
+    /*
+     * Discord uses the server ID
+     * as the @everyone role ID.
+     */
     if (
         role.id ===
         interaction.guild.id
@@ -2605,7 +2586,7 @@ if (
 
     const result =
         await authorizeRole(
-            interaction.guild.id,
+            interaction.guild,
             role.id
         );
 
@@ -2655,7 +2636,7 @@ if (
 
     const result =
         await unauthorizeRole(
-            interaction.guild.id,
+            interaction.guild,
             role.id
         );
 
@@ -2679,12 +2660,12 @@ if (
 ) {
     const users =
         await getAuthorizedUsers(
-            interaction.guild.id
+            interaction.guild
         );
 
     const roles =
         await getAuthorizedRoles(
-            interaction.guild.id
+            interaction.guild
         );
 
     let output =
@@ -2695,7 +2676,7 @@ if (
 
     output +=
         Array.isArray(users) &&
-        users.length
+        users.length > 0
             ? users
                 .map(
                     id =>
@@ -2709,7 +2690,7 @@ if (
 
     output +=
         Array.isArray(roles) &&
-        roles.length
+        roles.length > 0
             ? roles
                 .map(
                     id =>
@@ -2718,12 +2699,21 @@ if (
                 .join("\n")
             : "• None";
 
+    if (
+        output.length >
+        1900
+    ) {
+        output =
+            output.slice(
+                0,
+                1850
+            ) +
+            "\n\n...list truncated.";
+    }
+
     await safeReply(
         interaction,
-        output.slice(
-            0,
-            1900
-        )
+        output
     );
 
     return;
@@ -2739,12 +2729,12 @@ if (
 ) {
     const users =
         await getUnauthorizedUsers(
-            interaction.guild.id
+            interaction.guild
         );
 
     const roles =
         await getUnauthorizedRoles(
-            interaction.guild.id
+            interaction.guild
         );
 
     let output =
@@ -2755,7 +2745,7 @@ if (
 
     output +=
         Array.isArray(users) &&
-        users.length
+        users.length > 0
             ? users
                 .map(
                     id =>
@@ -2769,7 +2759,7 @@ if (
 
     output +=
         Array.isArray(roles) &&
-        roles.length
+        roles.length > 0
             ? roles
                 .map(
                     id =>
@@ -2778,12 +2768,21 @@ if (
                 .join("\n")
             : "• None";
 
+    if (
+        output.length >
+        1900
+    ) {
+        output =
+            output.slice(
+                0,
+                1850
+            ) +
+            "\n\n...list truncated.";
+    }
+
     await safeReply(
         interaction,
-        output.slice(
-            0,
-            1900
-        )
+        output
     );
 
     return;
@@ -2846,7 +2845,7 @@ if (
 ) {
     const locked =
         isLockedDown(
-            interaction.guild.id
+            interaction.guild
         );
 
     await safeReply(
@@ -2906,9 +2905,21 @@ if (
         return;
     }
 
+    if (
+        word.includes("\n") ||
+        word.includes("\r")
+    ) {
+        await safeReply(
+            interaction,
+            "❌ Blocked words cannot contain line breaks."
+        );
+
+        return;
+    }
+
     const added =
         await addBlockedWord(
-            interaction.guild.id,
+            interaction.guild,
             word
         );
 
@@ -2955,7 +2966,7 @@ if (
 
     const removed =
         await removeBlockedWord(
-            interaction.guild.id,
+            interaction.guild,
             word
         );
 
@@ -2979,7 +2990,7 @@ if (
 ) {
     const words =
         await getBlockedWords(
-            interaction.guild.id
+            interaction.guild
         );
 
     if (
@@ -3037,16 +3048,6 @@ if (
 }
 
 // ====================================
-// UNKNOWN COMMAND
-// KEEP THIS LAST
-// ====================================
-
-await safeReply(
-    interaction,
-    `❌ Guardian does not have a handler for \`/${command}\`.`
-);
-
-// ====================================
 // ACCESS CONTROL
 // ====================================
 
@@ -3055,7 +3056,7 @@ if (!admin) {
         interaction.member;
 
     // Fetch the complete GuildMember if Discord
-    // supplied only partial/raw member information.
+    // supplied partial/raw member information.
     if (
         !member ||
         typeof member.roles?.cache ===
@@ -3371,9 +3372,13 @@ if (
                 : `Deleted category (${categoryId})`;
 
         const messageText =
-            item.message ??
-            item.message_text ??
-            "";
+            typeof item.message ===
+                "string"
+                ? item.message
+                : typeof item.message_text ===
+                    "string"
+                    ? item.message_text
+                    : "";
 
         const section =
             `📁 **${categoryName}**\n` +
@@ -3459,7 +3464,7 @@ if (
 ) {
     const locked =
         isLockedDown(
-            interaction.guild.id
+            interaction.guild
         );
 
     await safeReply(
@@ -3514,6 +3519,18 @@ if (
         await safeReply(
             interaction,
             `❌ Blocked words cannot be longer than ${maxLength} characters.`
+        );
+
+        return;
+    }
+
+    if (
+        word.includes("\n") ||
+        word.includes("\r")
+    ) {
+        await safeReply(
+            interaction,
+            "❌ Blocked words cannot contain line breaks."
         );
 
         return;
@@ -3650,14 +3667,18 @@ if (
 }
 
 // ====================================
-// UNKNOWN COMMAND
-// THIS MUST BE LAST
+// UNKNOWN COMMAND FALLBACK
+// THIS MUST BE THE LAST COMMAND HANDLER
 // ====================================
 
 await safeReply(
     interaction,
     `❌ Guardian does not have a handler for \`/${command}\`.`
 );
+
+// ====================================
+// END INTERACTION TRY
+// ====================================
 
         } catch (error) {
             console.error(
@@ -3668,228 +3689,6 @@ await safeReply(
             await safeReply(
                 interaction,
                 "❌ Something went wrong while processing that command."
-            );
-        }
-    }
-);
-
-// ========================================
-// AUTOMATIC CATEGORY MESSAGE
-// ========================================
-
-client.on(
-    "channelCreate",
-    async channel => {
-        try {
-            // ====================================
-            // BASIC CHECKS
-            // ====================================
-
-            if (
-                !channel ||
-                !channel.guild
-            ) {
-                return;
-            }
-
-            if (!databaseReady) {
-                console.warn(
-                    `[AUTO MESSAGE] Database is not ready for #${channel.name}`
-                );
-
-                return;
-            }
-
-            // ====================================
-            // ONLY TEXT / ANNOUNCEMENT CHANNELS
-            // ====================================
-
-            if (
-                channel.type !==
-                    ChannelType.GuildText &&
-                channel.type !==
-                    ChannelType.GuildAnnouncement
-            ) {
-                return;
-            }
-
-            if (
-                typeof channel.send !==
-                "function"
-            ) {
-                return;
-            }
-
-            // ====================================
-            // PARENT CATEGORY
-            // ====================================
-
-            const categoryId =
-                channel.parentId;
-
-            if (!categoryId) {
-                console.log(
-                    `[AUTO MESSAGE] #${channel.name} was created outside a category.`
-                );
-
-                return;
-            }
-
-            let category =
-                channel.guild
-                    .channels
-                    .cache
-                    .get(
-                        categoryId
-                    );
-
-            if (!category) {
-                try {
-                    category =
-                        await channel.guild
-                            .channels
-                            .fetch(
-                                categoryId
-                            );
-
-                } catch (error) {
-                    console.error(
-                        `[AUTO MESSAGE] Could not fetch category for #${channel.name}:`,
-                        error.message
-                    );
-
-                    return;
-                }
-            }
-
-            if (
-                !category ||
-                category.type !==
-                    ChannelType.GuildCategory
-            ) {
-                console.warn(
-                    `[AUTO MESSAGE] Parent of #${channel.name} is not a valid category.`
-                );
-
-                return;
-            }
-
-            // ====================================
-            // GET SAVED AUTO MESSAGE
-            // ====================================
-
-            const autoMessage =
-                await getAutoCategoryMessage(
-                    channel.guild,
-                    categoryId
-                );
-
-            if (
-                typeof autoMessage !==
-                    "string" ||
-                !autoMessage.trim()
-            ) {
-                console.log(
-                    `[AUTO MESSAGE] No automatic message configured for category "${category.name}".`
-                );
-
-                return;
-            }
-
-            // ====================================
-            // FETCH GUARDIAN MEMBER
-            // ====================================
-
-            let me =
-                channel.guild.members.me;
-
-            if (!me) {
-                try {
-                    me =
-                        await channel.guild
-                            .members
-                            .fetchMe();
-
-                } catch (error) {
-                    console.error(
-                        `[AUTO MESSAGE] Could not fetch Guardian member in ${channel.guild.name}:`,
-                        error.message
-                    );
-
-                    return;
-                }
-            }
-
-            // ====================================
-            // PERMISSION CHECK
-            // ====================================
-
-            const permissions =
-                channel.permissionsFor(
-                    me
-                );
-
-            if (!permissions) {
-                console.warn(
-                    `[AUTO MESSAGE] Could not determine Guardian permissions for #${channel.name}.`
-                );
-
-                return;
-            }
-
-            if (
-                !permissions.has(
-                    "ViewChannel"
-                )
-            ) {
-                console.warn(
-                    `[AUTO MESSAGE] Guardian cannot view #${channel.name}.`
-                );
-
-                return;
-            }
-
-            if (
-                !permissions.has(
-                    "SendMessages"
-                )
-            ) {
-                console.warn(
-                    `[AUTO MESSAGE] Guardian cannot send messages in #${channel.name}.`
-                );
-
-                return;
-            }
-
-            // ====================================
-            // SEND AUTO MESSAGE
-            // ====================================
-
-            try {
-                await channel.send({
-                    content:
-                        autoMessage
-                });
-
-                console.log(
-                    `[AUTO MESSAGE] ✅ Sent automatic message in #${channel.name}`
-                );
-
-                console.log(
-                    `[AUTO MESSAGE] 📁 Category: ${category.name}`
-                );
-
-            } catch (error) {
-                console.error(
-                    `[AUTO MESSAGE] ❌ Could not send automatic message in #${channel.name}:`,
-                    error.message
-                );
-            }
-
-        } catch (error) {
-            console.error(
-                "❌ Auto category message error:",
-                error
             );
         }
     }
@@ -3925,10 +3724,10 @@ client.on(
 
 process.on(
     "unhandledRejection",
-    error => {
+    reason => {
         console.error(
             "❌ Unhandled promise rejection:",
-            error
+            reason
         );
     }
 );
@@ -3939,6 +3738,66 @@ process.on(
         console.error(
             "❌ Uncaught exception:",
             error
+        );
+
+        /*
+         * An uncaught exception can leave
+         * the bot in an unreliable state.
+         */
+        process.exit(1);
+    }
+);
+
+// ========================================
+// GRACEFUL SHUTDOWN
+// ========================================
+
+async function shutdown(
+    signal
+) {
+    try {
+        console.log(
+            `⚠️ Received ${signal}. Shutting down Guardian Anti-Raid...`
+        );
+
+        if (
+            client &&
+            typeof client.destroy ===
+                "function"
+        ) {
+            client.destroy();
+        }
+
+        console.log(
+            "🛡️ Guardian Anti-Raid disconnected."
+        );
+
+        process.exit(0);
+
+    } catch (error) {
+        console.error(
+            "❌ Shutdown error:",
+            error
+        );
+
+        process.exit(1);
+    }
+}
+
+process.once(
+    "SIGINT",
+    () => {
+        shutdown(
+            "SIGINT"
+        );
+    }
+);
+
+process.once(
+    "SIGTERM",
+    () => {
+        shutdown(
+            "SIGTERM"
         );
     }
 );
@@ -4011,7 +3870,7 @@ async function startBot() {
         );
 
         console.log(
-            "✅ Multi-line auto-category messages ready."
+            "✅ Auto-category messages database ready."
         );
 
         console.log(
@@ -4059,6 +3918,14 @@ async function startBot() {
                 ? `❌ Error message: ${error.message}`
                 : error
         );
+
+        if (
+            error?.code
+        ) {
+            console.error(
+                `❌ Error code: ${error.code}`
+            );
+        }
 
         // ====================================
         // DATABASE HOST ERROR
@@ -4120,7 +3987,7 @@ async function startBot() {
             "3D000"
         ) {
             console.error(
-                "❌ PostgreSQL database name does not exist."
+                "❌ PostgreSQL database does not exist."
             );
 
             console.error(
@@ -4129,15 +3996,39 @@ async function startBot() {
         }
 
         // ====================================
-        // SSL ERROR
+        // SSL ERRORS
         // ====================================
 
         if (
             error?.code ===
-            "SELF_SIGNED_CERT_IN_CHAIN"
+                "SELF_SIGNED_CERT_IN_CHAIN" ||
+            error?.code ===
+                "DEPTH_ZERO_SELF_SIGNED_CERT"
         ) {
             console.error(
                 "❌ PostgreSQL SSL connection failed."
+            );
+        }
+
+        // ====================================
+        // DISCORD TOKEN ERROR
+        // ====================================
+
+        if (
+            error?.code ===
+                "TokenInvalid" ||
+            error?.message
+                ?.toLowerCase()
+                .includes(
+                    "invalid token"
+                )
+        ) {
+            console.error(
+                "❌ DISCORD_TOKEN is invalid."
+            );
+
+            console.error(
+                "❌ Check the bot token in Render environment variables."
             );
         }
 
