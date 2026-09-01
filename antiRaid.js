@@ -11,19 +11,26 @@ const database = require("./database");
 
 const guildStates = new Map();
 
-function getGuildState(guildId) {
+function getGuildState(
+    guildId
+) {
 
     if (!guildStates.has(guildId)) {
 
-        guildStates.set(guildId, {
-            joins: [],
-            lockdown: false,
-            lockdownTimer: null,
-            whitelistedUsers: new Set()
-        });
+        guildStates.set(
+            guildId,
+            {
+                joins: [],
+                lockdown: false,
+                lockdownTimer: null,
+                whitelistedUsers: new Set()
+            }
+        );
     }
 
-    return guildStates.get(guildId);
+    return guildStates.get(
+        guildId
+    );
 }
 
 // ========================================
@@ -35,8 +42,17 @@ function recordJoin(
     userId
 ) {
 
+    if (
+        !guildId ||
+        !userId
+    ) {
+        return 0;
+    }
+
     const state =
-        getGuildState(guildId);
+        getGuildState(
+            guildId
+        );
 
     const now =
         Date.now();
@@ -60,9 +76,15 @@ function recordJoin(
 // ACCOUNT AGE
 // ========================================
 
-function isSuspiciousAccount(member) {
+function isSuspiciousAccount(
+    member
+) {
 
-    if (!member || !member.user) {
+    if (
+        !member ||
+        !member.user ||
+        !member.user.createdTimestamp
+    ) {
         return false;
     }
 
@@ -80,9 +102,14 @@ function isSuspiciousAccount(member) {
 // WHITELIST
 // ========================================
 
-function isWhitelisted(member) {
+function isWhitelisted(
+    member
+) {
 
-    if (!member || !member.guild) {
+    if (
+        !member ||
+        !member.guild
+    ) {
         return false;
     }
 
@@ -98,6 +125,13 @@ function whitelistUser(
     userId
 ) {
 
+    if (
+        !guildId ||
+        !userId
+    ) {
+        return false;
+    }
+
     getGuildState(
         guildId
     ).whitelistedUsers.add(
@@ -111,6 +145,13 @@ function removeWhitelist(
     guildId,
     userId
 ) {
+
+    if (
+        !guildId ||
+        !userId
+    ) {
+        return false;
+    }
 
     return getGuildState(
         guildId
@@ -135,7 +176,7 @@ async function kickMember(
             !member.kickable
         ) {
 
-            console.log(
+            console.warn(
                 `[KICK FAILED] Cannot kick ${
                     member?.user?.tag ||
                     "Unknown user"
@@ -191,7 +232,8 @@ async function lockdown(
         return false;
     }
 
-    state.lockdown = true;
+    state.lockdown =
+        true;
 
     console.log(
         `[LOCKDOWN] ${guild.name}`
@@ -239,6 +281,15 @@ async function lockdown(
         }
     }
 
+    if (
+        state.lockdownTimer
+    ) {
+
+        clearTimeout(
+            state.lockdownTimer
+        );
+    }
+
     state.lockdownTimer =
         setTimeout(
             async () => {
@@ -252,7 +303,7 @@ async function lockdown(
                 } catch (error) {
 
                     console.error(
-                        "Automatic unlock error:",
+                        "❌ Automatic unlock error:",
                         error
                     );
                 }
@@ -284,7 +335,8 @@ async function unlock(
         return false;
     }
 
-    state.lockdown = false;
+    state.lockdown =
+        false;
 
     if (
         state.lockdownTimer
@@ -351,6 +403,10 @@ function isLockedDown(
     guildId
 ) {
 
+    if (!guildId) {
+        return false;
+    }
+
     return getGuildState(
         guildId
     ).lockdown;
@@ -363,6 +419,10 @@ function isLockedDown(
 function getRecentJoinCount(
     guildId
 ) {
+
+    if (!guildId) {
+        return 0;
+    }
 
     const state =
         getGuildState(
@@ -414,17 +474,6 @@ async function getBlockedWords(
 
     return database.getBlockedWords(
         guildId
-    );
-}
-
-async function findBlockedWord(
-    guildId,
-    message
-) {
-
-    return database.findBlockedWord(
-        guildId,
-        message
     );
 }
 
@@ -586,8 +635,7 @@ async function canUseGuardian(
     // ====================================
 
     if (
-        member.permissions &&
-        member.permissions.has(
+        member.permissions?.has(
             "Administrator"
         )
     ) {
@@ -611,25 +659,32 @@ async function canUseGuardian(
     // EXPLICIT ROLE DENY
     // ====================================
 
-    for (
-        const role of
-        member.roles.cache.values()
-    ) {
+    const memberRoles =
+        member.roles?.cache;
 
-        if (
-            role.id ===
-            guildId
-        ) {
-            continue;
-        }
+    if (memberRoles) {
 
-        if (
-            await isUnauthorizedRole(
-                guildId,
-                role.id
-            )
+        for (
+            const role of
+            memberRoles.values()
         ) {
-            return false;
+
+            // Skip @everyone
+            if (
+                role.id ===
+                guildId
+            ) {
+                continue;
+            }
+
+            if (
+                await isUnauthorizedRole(
+                    guildId,
+                    role.id
+                )
+            ) {
+                return false;
+            }
         }
     }
 
@@ -650,25 +705,29 @@ async function canUseGuardian(
     // AUTHORIZED ROLE ALLOW
     // ====================================
 
-    for (
-        const role of
-        member.roles.cache.values()
-    ) {
+    if (memberRoles) {
 
-        if (
-            role.id ===
-            guildId
+        for (
+            const role of
+            memberRoles.values()
         ) {
-            continue;
-        }
 
-        if (
-            await isAuthorizedRole(
-                guildId,
-                role.id
-            )
-        ) {
-            return true;
+            // Skip @everyone
+            if (
+                role.id ===
+                guildId
+            ) {
+                continue;
+            }
+
+            if (
+                await isAuthorizedRole(
+                    guildId,
+                    role.id
+                )
+            ) {
+                return true;
+            }
         }
     }
 
@@ -803,7 +862,6 @@ module.exports = {
     addBlockedWord,
     removeBlockedWord,
     getBlockedWords,
-    findBlockedWord,
 
     // ====================================
     // USER AUTHORIZATION
