@@ -4,12 +4,11 @@ module.exports = {
     // RAID PROTECTION
     // ========================================
 
-    // Number of joins required
-    // to trigger raid protection.
+    // Number of joins required to trigger
+    // automatic raid protection.
     raidJoinThreshold: 8,
 
-    // Raid detection time window.
-    // Value is in seconds.
+    // Raid detection window in seconds.
     raidTimeWindow: 10,
 
     // ========================================
@@ -35,18 +34,37 @@ module.exports = {
         5 * 60 * 1000,
 
     // ========================================
-    // BLOCKED WORD PROTECTION
+    // IMAGE-SPAM PROTECTION
+    // ========================================
+
+    // Detect the same image posted by the
+    // same account in different channels
+    // within 10 seconds.
+    //
+    // This value is in milliseconds.
+    imageSpamTimeWindow:
+        10 * 1000,
+
+    // Maximum image size that Guardian
+    // downloads when checking for duplicates.
+    //
+    // This is 10 megabytes.
+    imageSpamMaxFileSize:
+        10 * 1024 * 1024,
+
+    // ========================================
+    // BLOCKED-WORD PROTECTION
     // ========================================
 
     // Timeout duration after a confirmed
     // blocked-word match.
     //
-    // 24 hours.
+    // This is 24 hours.
     wordTimeoutDuration:
         24 * 60 * 60 * 1000,
 
-    // Maximum length of one
-    // blocked-word entry.
+    // Maximum length of one blocked-word
+    // database entry.
     blockedWordMaxLength: 100,
 
     // ========================================
@@ -54,36 +72,36 @@ module.exports = {
     // ========================================
 
     /*
-     * Guardian currently uses strict
-     * whole-word matching.
+     * Guardian uses strict whole-word
+     * matching.
      *
-     * Example:
+     * Example blocked word:
      *
-     * Blocked:
      * ass
      *
      * BLOCK:
+     *
      * ass
      * ASS
      * "ass"
      * ass!
      *
      * ALLOW:
+     *
      * class
      * grass
      * glasses
      * assassin
      *
-     * These advanced matching options
-     * are disabled to prevent false
-     * positives.
+     * Advanced matching remains disabled
+     * to reduce false positives.
      */
 
     // Do not convert stylized Unicode
     // characters into blocked words.
     normalizeUnicodeWords: false,
 
-    // Do not convert substitutions like:
+    // Do not convert substitutions such as:
     //
     // sh1t
     // sh!t
@@ -92,14 +110,14 @@ module.exports = {
     // into blocked words.
     detectLookalikeCharacters: false,
 
-    // Do not match separated characters like:
+    // Do not match separated characters:
     //
     // s h i t
     // s.h.i.t
     // s-h-i-t
     detectSeparatedWords: false,
 
-    // Do not reduce repeated letters like:
+    // Do not reduce repeated letters:
     //
     // shiiit
     // fuuuck
@@ -110,19 +128,20 @@ module.exports = {
     // ========================================
 
     /*
-     * Keep fuzzy matching disabled.
+     * Fuzzy matching stays disabled.
      *
      * Fuzzy matching can incorrectly flag
-     * normal words that are only similar
-     * to a blocked word.
+     * ordinary words that only resemble
+     * a blocked word.
      */
     fuzzyWordMatching: false,
 
     /*
-     * These values are kept only in case
-     * fuzzy matching is added again later.
+     * These values are retained in case
+     * fuzzy matching is added later.
      *
-     * They currently have no effect.
+     * They have no effect while
+     * fuzzyWordMatching is false.
      */
     fuzzyMinimumWordLength: 8,
 
@@ -138,7 +157,7 @@ module.exports = {
     // AUTOMATIC CATEGORY MESSAGES
     // ========================================
 
-    // Discord's normal message limit.
+    // Discord's standard message limit.
     autoMessageMaxLength: 2000,
 
     // ========================================
@@ -149,7 +168,7 @@ module.exports = {
     // of messages when a member triggers
     // the ban channel.
     //
-    // Discord expects seconds.
+    // Discord expects this value in seconds.
     banDeleteMessageSeconds:
         3 * 60 * 60
 };
