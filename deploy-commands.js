@@ -1,6 +1,9 @@
 require("dotenv").config();
 
 const {
+    Client,
+    Events,
+    GatewayIntentBits,
     REST,
     Routes,
     SlashCommandBuilder,
@@ -34,7 +37,7 @@ if (!process.env.CLIENT_ID) {
 const commands = [
 
     // ====================================
-    // RAID / SECURITY
+    // RAID AND SECURITY
     // ====================================
 
     new SlashCommandBuilder()
@@ -64,13 +67,14 @@ const commands = [
         .setDescription(
             "Authorize a user to use Guardian."
         )
-        .addUserOption(option =>
-            option
-                .setName("user")
-                .setDescription(
-                    "User to authorize."
-                )
-                .setRequired(true)
+        .addUserOption(
+            option =>
+                option
+                    .setName("user")
+                    .setDescription(
+                        "User to authorize."
+                    )
+                    .setRequired(true)
         ),
 
     new SlashCommandBuilder()
@@ -78,13 +82,14 @@ const commands = [
         .setDescription(
             "Remove Guardian authorization from a user."
         )
-        .addUserOption(option =>
-            option
-                .setName("user")
-                .setDescription(
-                    "User to unauthorize."
-                )
-                .setRequired(true)
+        .addUserOption(
+            option =>
+                option
+                    .setName("user")
+                    .setDescription(
+                        "User to unauthorize."
+                    )
+                    .setRequired(true)
         ),
 
     // ====================================
@@ -96,13 +101,14 @@ const commands = [
         .setDescription(
             "Authorize a role to use Guardian."
         )
-        .addRoleOption(option =>
-            option
-                .setName("role")
-                .setDescription(
-                    "Role to authorize."
-                )
-                .setRequired(true)
+        .addRoleOption(
+            option =>
+                option
+                    .setName("role")
+                    .setDescription(
+                        "Role to authorize."
+                    )
+                    .setRequired(true)
         ),
 
     new SlashCommandBuilder()
@@ -110,13 +116,14 @@ const commands = [
         .setDescription(
             "Remove Guardian authorization from a role."
         )
-        .addRoleOption(option =>
-            option
-                .setName("role")
-                .setDescription(
-                    "Role to unauthorize."
-                )
-                .setRequired(true)
+        .addRoleOption(
+            option =>
+                option
+                    .setName("role")
+                    .setDescription(
+                        "Role to unauthorize."
+                    )
+                    .setRequired(true)
         ),
 
     // ====================================
@@ -144,15 +151,16 @@ const commands = [
         .setDescription(
             "Add an exact word to Guardian's blocked-word list."
         )
-        .addStringOption(option =>
-            option
-                .setName("word")
-                .setDescription(
-                    "Exact word to block."
-                )
-                .setMinLength(1)
-                .setMaxLength(100)
-                .setRequired(true)
+        .addStringOption(
+            option =>
+                option
+                    .setName("word")
+                    .setDescription(
+                        "Exact word to block."
+                    )
+                    .setMinLength(1)
+                    .setMaxLength(100)
+                    .setRequired(true)
         ),
 
     new SlashCommandBuilder()
@@ -160,15 +168,16 @@ const commands = [
         .setDescription(
             "Remove a word from Guardian's blocked-word list."
         )
-        .addStringOption(option =>
-            option
-                .setName("word")
-                .setDescription(
-                    "Blocked word to remove."
-                )
-                .setMinLength(1)
-                .setMaxLength(100)
-                .setRequired(true)
+        .addStringOption(
+            option =>
+                option
+                    .setName("word")
+                    .setDescription(
+                        "Blocked word to remove."
+                    )
+                    .setMinLength(1)
+                    .setMaxLength(100)
+                    .setRequired(true)
         ),
 
     new SlashCommandBuilder()
@@ -186,16 +195,17 @@ const commands = [
         .setDescription(
             "Set a message for newly created channels in a category."
         )
-        .addChannelOption(option =>
-            option
-                .setName("category")
-                .setDescription(
-                    "Category to monitor."
-                )
-                .addChannelTypes(
-                    ChannelType.GuildCategory
-                )
-                .setRequired(true)
+        .addChannelOption(
+            option =>
+                option
+                    .setName("category")
+                    .setDescription(
+                        "Category to monitor."
+                    )
+                    .addChannelTypes(
+                        ChannelType.GuildCategory
+                    )
+                    .setRequired(true)
         ),
 
     new SlashCommandBuilder()
@@ -203,16 +213,17 @@ const commands = [
         .setDescription(
             "Remove the automatic message from a category."
         )
-        .addChannelOption(option =>
-            option
-                .setName("category")
-                .setDescription(
-                    "Category to stop monitoring."
-                )
-                .addChannelTypes(
-                    ChannelType.GuildCategory
-                )
-                .setRequired(true)
+        .addChannelOption(
+            option =>
+                option
+                    .setName("category")
+                    .setDescription(
+                        "Category to stop monitoring."
+                    )
+                    .addChannelTypes(
+                        ChannelType.GuildCategory
+                    )
+                    .setRequired(true)
         ),
 
     new SlashCommandBuilder()
@@ -230,16 +241,17 @@ const commands = [
         .setDescription(
             "Set a channel that bans non-admin users who send messages in it."
         )
-        .addChannelOption(option =>
-            option
-                .setName("channel")
-                .setDescription(
-                    "Text channel to use as the ban-trigger channel."
-                )
-                .addChannelTypes(
-                    ChannelType.GuildText
-                )
-                .setRequired(true)
+        .addChannelOption(
+            option =>
+                option
+                    .setName("channel")
+                    .setDescription(
+                        "Text channel to use as the ban-trigger channel."
+                    )
+                    .addChannelTypes(
+                        ChannelType.GuildText
+                    )
+                    .setRequired(true)
         ),
 
     new SlashCommandBuilder()
@@ -254,9 +266,44 @@ const commands = [
             "Show the current ban-trigger channel."
         )
 
-].map(command =>
-    command.toJSON()
+].map(
+    command =>
+        command.toJSON()
 );
+
+// ========================================
+// CHECK FOR DUPLICATE COMMAND NAMES
+// ========================================
+
+function checkForDuplicateNames() {
+    const commandNames =
+        commands.map(
+            command =>
+                command.name
+        );
+
+    const duplicateNames =
+        commandNames.filter(
+            (name, index) =>
+                commandNames.indexOf(name) !==
+                index
+        );
+
+    if (duplicateNames.length > 0) {
+        const uniqueDuplicates =
+            [
+                ...new Set(
+                    duplicateNames
+                )
+            ];
+
+        throw new Error(
+            `Duplicate command names found: ${
+                uniqueDuplicates.join(", ")
+            }`
+        );
+    }
+}
 
 // ========================================
 // REST CLIENT
@@ -270,7 +317,172 @@ const rest =
     );
 
 // ========================================
-// DEPLOY GLOBAL COMMANDS
+// TEMPORARY DISCORD CLIENT
+// ========================================
+
+// This client is only used by the deployer
+// to find servers containing old guild commands.
+const deployClient =
+    new Client({
+        intents: [
+            GatewayIntentBits.Guilds
+        ]
+    });
+
+// ========================================
+// WAIT FOR CLIENT READY
+// ========================================
+
+function waitForReady(client) {
+    if (client.isReady()) {
+        return Promise.resolve();
+    }
+
+    return new Promise(
+        (resolve, reject) => {
+            const timeout =
+                setTimeout(
+                    () => {
+                        reject(
+                            new Error(
+                                "Discord client did not become ready in time."
+                            )
+                        );
+                    },
+                    30000
+                );
+
+            client.once(
+                Events.ClientReady,
+                () => {
+                    clearTimeout(
+                        timeout
+                    );
+
+                    resolve();
+                }
+            );
+        }
+    );
+}
+
+// ========================================
+// REMOVE OLD SERVER COMMANDS
+// ========================================
+
+async function removeOldGuildCommands() {
+    console.log(
+        "🔍 Checking for old server-specific commands..."
+    );
+
+    const guilds =
+        await deployClient
+            .guilds
+            .fetch();
+
+    if (guilds.size === 0) {
+        console.log(
+            "✅ No servers found with old guild commands."
+        );
+
+        return 0;
+    }
+
+    let clearedGuilds = 0;
+
+    for (
+        const [
+            guildId,
+            guild
+        ] of guilds
+    ) {
+        try {
+            const oldCommands =
+                await rest.get(
+                    Routes.applicationGuildCommands(
+                        process.env.CLIENT_ID,
+                        guildId
+                    )
+                );
+
+            if (
+                !Array.isArray(oldCommands) ||
+                oldCommands.length === 0
+            ) {
+                console.log(
+                    `✅ No old server commands in ${
+                        guild.name ??
+                        guildId
+                    }`
+                );
+
+                continue;
+            }
+
+            await rest.put(
+                Routes.applicationGuildCommands(
+                    process.env.CLIENT_ID,
+                    guildId
+                ),
+                {
+                    body: []
+                }
+            );
+
+            clearedGuilds++;
+
+            console.log(
+                `🧹 Removed ${
+                    oldCommands.length
+                } old server command(s) from ${
+                    guild.name ??
+                    guildId
+                }`
+            );
+
+        } catch (error) {
+            console.error(
+                `❌ Could not clear old commands from ${
+                    guild.name ??
+                    guildId
+                }:`,
+                error?.rawError ??
+                error
+            );
+        }
+    }
+
+    return clearedGuilds;
+}
+
+// ========================================
+// REGISTER GLOBAL COMMANDS
+// ========================================
+
+async function registerGlobalCommands() {
+    console.log(
+        `📋 Registering ${commands.length} global command(s)...`
+    );
+
+    // PUT replaces the complete global command list.
+    // It does not add another copy to the existing list.
+    const deployed =
+        await rest.put(
+            Routes.applicationCommands(
+                process.env.CLIENT_ID
+            ),
+            {
+                body: commands
+            }
+        );
+
+    return Array.isArray(deployed)
+        ? deployed
+        : [];
+}
+
+// ========================================
+// DEPLOY COMMANDS
 // ========================================
 
 async function deployCommands() {
@@ -287,28 +499,36 @@ async function deployCommands() {
             "================================"
         );
 
+        checkForDuplicateNames();
+
         console.log(
-            `📋 Preparing ${commands.length} command(s)`
+            `📋 ${commands.length} unique command(s) prepared`
         );
 
         console.log(
-            "🌍 Registration type: GLOBAL"
+            "🌍 Final registration type: GLOBAL"
         );
 
-        console.log(
-            "🔄 Registering slash commands..."
+        const readyPromise =
+            waitForReady(
+                deployClient
+            );
+
+        await deployClient.login(
+            process.env.DISCORD_TOKEN
         );
+
+        await readyPromise;
+
+        console.log(
+            `🤖 Connected as ${deployClient.user.tag}`
+        );
+
+        const clearedGuilds =
+            await removeOldGuildCommands();
 
         const deployed =
-            await rest.put(
-                Routes.applicationCommands(
-                    process.env.CLIENT_ID
-                ),
-                {
-                    body:
-                        commands
-                }
-            );
+            await registerGlobalCommands();
 
         console.log(
             "================================"
@@ -323,9 +543,11 @@ async function deployCommands() {
         );
 
         console.log(
-            `📋 ${Array.isArray(deployed)
-                ? deployed.length
-                : commands.length} command(s) deployed`
+            `📋 ${deployed.length} global command(s) deployed`
+        );
+
+        console.log(
+            `🧹 ${clearedGuilds} server(s) had old commands removed`
         );
 
         console.log(
@@ -333,7 +555,7 @@ async function deployCommands() {
         );
 
         console.log(
-            "🌍 Registration: GLOBAL"
+            "🌍 No fixed GUILD_ID was used"
         );
 
         console.log(
@@ -361,17 +583,10 @@ async function deployCommands() {
             "================================"
         );
 
-        if (
-            error?.rawError
-        ) {
-            console.error(
-                error.rawError
-            );
-        } else {
-            console.error(
-                error
-            );
-        }
+        console.error(
+            error?.rawError ??
+            error
+        );
 
         if (
             error?.status === 401 ||
@@ -382,21 +597,26 @@ async function deployCommands() {
             );
         }
 
-        if (
-            error?.status === 404
-        ) {
+        if (error?.status === 404) {
             console.error(
                 "❌ Check your CLIENT_ID."
             );
         }
 
-        process.exitCode =
-            1;
+        process.exitCode = 1;
+
+    } finally {
+        if (
+            deployClient &&
+            !deployClient.destroyed
+        ) {
+            deployClient.destroy();
+        }
     }
 }
 
 // ========================================
-// UNHANDLED PROMISE REJECTIONS
+// PROCESS ERROR HANDLERS
 // ========================================
 
 process.on(
@@ -406,12 +626,10 @@ process.on(
             "❌ Unhandled promise rejection:",
             error
         );
+
+        process.exitCode = 1;
     }
 );
-
-// ========================================
-// UNCAUGHT EXCEPTIONS
-// ========================================
 
 process.on(
     "uncaughtException",
@@ -421,8 +639,7 @@ process.on(
             error
         );
 
-        process.exitCode =
-            1;
+        process.exitCode = 1;
     }
 );
 
