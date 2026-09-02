@@ -1,11 +1,16 @@
 {
   "name": "guardian-anti-raid",
   "version": "1.0.0",
-  "description": "Discord anti-raid protection bot",
+  "description": "Multi-server Discord anti-raid and moderation bot",
   "main": "index.js",
+  "type": "commonjs",
   "scripts": {
     "start": "node index.js",
-    "deploy": "node deploy-commands.js"
+    "deploy": "node deploy-commands.js",
+    "check": "node --check index.js && node --check antiRaid.js && node --check database.js && node --check config.js && node --check deploy-commands.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   },
   "dependencies": {
     "discord.js": "^14.21.0",
