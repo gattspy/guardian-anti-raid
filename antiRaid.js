@@ -1,45 +1,38 @@
 const {
-    ChannelType
+    createHash
+} = require("node:crypto");
+
+const {
+    ChannelType,
+    PermissionFlagsBits
 } = require("discord.js");
 
-const config =
-    require("./config");
-
-const database =
-    require("./database");
+const config = require("./config");
+const database = require("./database");
 
 // ========================================
-// SERVER STATE
+// TEMPORARY SERVER STATE
 // ========================================
 
-const guildStates =
-    new Map();
+const guildStates = new Map();
 
 // ========================================
 // SERVER ID HELPER
 // ========================================
 
-function getServerId(
-    guild
-) {
+// This is not a fixed GUILD_ID environment variable.
+// It retrieves the ID of whichever server is using the bot.
+function getServerId(guild) {
     if (!guild) {
         return null;
     }
 
-    if (
-        typeof guild ===
-        "string"
-    ) {
-        return guild.trim() ||
-            null;
+    if (typeof guild === "string") {
+        return guild.trim() || null;
     }
 
-    if (
-        typeof guild.id ===
-        "string"
-    ) {
-        return guild.id.trim() ||
-            null;
+    if (typeof guild.id === "string") {
+        return guild.id.trim() || null;
     }
 
     return null;
@@ -49,158 +42,87 @@ function getServerId(
 // GET SERVER STATE
 // ========================================
 
-function getGuildState(
-    guild
-) {
-    const serverId =
-        getServerId(
-            guild
-        );
+function getGuildState(guild) {
+    const serverId = getServerId(guild);
 
     if (!serverId) {
         return null;
     }
 
-    if (
-        !guildStates.has(
-            serverId
-        )
-    ) {
-        guildStates.set(
-            serverId,
-            {
-                joins:
-                    [],
-
-                lockdown:
-                    false,
-
-                lockdownTimer:
-                    null,
-
-                whitelistedUsers:
-                    new Set()
-            }
-        );
+    if (!guildStates.has(serverId)) {
+        guildStates.set(serverId, {
+            joins: [],
+            lockdown: false,
+            lockdownTimer: null,
+            whitelistedUsers: new Set(),
+            imageSpam: new Map()
+        });
     }
 
-    return guildStates.get(
-        serverId
-    );
+    return guildStates.get(serverId);
 }
 
 // ========================================
 // JOIN TRACKING
 // ========================================
 
-function recordJoin(
-    guild,
-    userId
-) {
-    const serverId =
-        getServerId(
-            guild
+function getRaidWindowMilliseconds() {
+    return (
+        config.raidTimeWindow ??
+        10
+    ) * 1000;
+}
+
+function removeOldJoins(state) {
+    const cutoff =
+        Date.now() -
+        getRaidWindowMilliseconds();
+
+    state.joins =
+        state.joins.filter(
+            join =>
+                join.timestamp >= cutoff
         );
+}
 
-    if (
-        !serverId ||
-        !userId
-    ) {
-        return 0;
-    }
-
+function recordJoin(guild, userId) {
     const state =
-        getGuildState(
-            serverId
-        );
+        getGuildState(guild);
 
-    if (!state) {
+    if (!state || !userId) {
         return 0;
     }
-
-    const now =
-        Date.now();
 
     state.joins.push({
-        userId:
-            String(userId),
-
-        timestamp:
-            now
+        userId: String(userId),
+        timestamp: Date.now()
     });
 
-    const windowMilliseconds =
-        (
-            config.raidTimeWindow ??
-            10
-        ) * 1000;
-
-    state.joins =
-        state.joins.filter(
-            join =>
-                now -
-                    join.timestamp <=
-                windowMilliseconds
-        );
+    removeOldJoins(state);
 
     return state.joins.length;
 }
 
-// ========================================
-// RECENT JOIN COUNT
-// ========================================
-
-function getRecentJoinCount(
-    guild
-) {
-    const serverId =
-        getServerId(
-            guild
-        );
-
-    if (!serverId) {
-        return 0;
-    }
-
+function getRecentJoinCount(guild) {
     const state =
-        getGuildState(
-            serverId
-        );
+        getGuildState(guild);
 
     if (!state) {
         return 0;
     }
 
-    const now =
-        Date.now();
-
-    const windowMilliseconds =
-        (
-            config.raidTimeWindow ??
-            10
-        ) * 1000;
-
-    state.joins =
-        state.joins.filter(
-            join =>
-                now -
-                    join.timestamp <=
-                windowMilliseconds
-        );
+    removeOldJoins(state);
 
     return state.joins.length;
 }
 
 // ========================================
-// ACCOUNT AGE
+// SUSPICIOUS ACCOUNT AGE
 // ========================================
 
-function isSuspiciousAccount(
-    member
-) {
+function isSuspiciousAccount(member) {
     if (
-        !member ||
-        !member.user ||
+        !member?.user ||
         typeof member.user.createdTimestamp !==
             "number"
     ) {
@@ -215,31 +137,23 @@ function isSuspiciousAccount(
         config.suspiciousAccountAge ??
         24 * 60 * 60 * 1000;
 
-    return (
-        accountAge <
-        suspiciousAge
-    );
+    return accountAge < suspiciousAge;
 }
 
 // ========================================
 // WHITELIST
 // ========================================
 
-function isWhitelisted(
-    member
-) {
+function isWhitelisted(member) {
     if (
-        !member ||
-        !member.guild ||
-        !member.id
+        !member?.guild ||
+        !member?.id
     ) {
         return false;
     }
 
     const state =
-        getGuildState(
-            member.guild
-        );
+        getGuildState(member.guild);
 
     if (!state) {
         return false;
@@ -247,33 +161,14 @@ function isWhitelisted(
 
     return state
         .whitelistedUsers
-        .has(
-            member.id
-        );
+        .has(member.id);
 }
 
-function whitelistUser(
-    guild,
-    userId
-) {
-    const serverId =
-        getServerId(
-            guild
-        );
-
-    if (
-        !serverId ||
-        !userId
-    ) {
-        return false;
-    }
-
+function whitelistUser(guild, userId) {
     const state =
-        getGuildState(
-            serverId
-        );
+        getGuildState(guild);
 
-    if (!state) {
+    if (!state || !userId) {
         return false;
     }
 
@@ -284,36 +179,17 @@ function whitelistUser(
     return true;
 }
 
-function removeWhitelist(
-    guild,
-    userId
-) {
-    const serverId =
-        getServerId(
-            guild
-        );
-
-    if (
-        !serverId ||
-        !userId
-    ) {
-        return false;
-    }
-
+function removeWhitelist(guild, userId) {
     const state =
-        getGuildState(
-            serverId
-        );
+        getGuildState(guild);
 
-    if (!state) {
+    if (!state || !userId) {
         return false;
     }
 
     return state
         .whitelistedUsers
-        .delete(
-            String(userId)
-        );
+        .delete(String(userId));
 }
 
 // ========================================
@@ -322,19 +198,14 @@ function removeWhitelist(
 
 async function kickMember(
     member,
-    reason =
-        "Guardian Anti-Raid protection"
+    reason = "Guardian Anti-Raid protection"
 ) {
     try {
-        if (!member) {
-            return false;
-        }
-
-        if (!member.kickable) {
+        if (!member?.kickable) {
             console.warn(
                 `[KICK FAILED] Cannot kick ${
-                    member.user?.tag ??
-                    member.id ??
+                    member?.user?.tag ??
+                    member?.id ??
                     "Unknown user"
                 }`
             );
@@ -342,9 +213,7 @@ async function kickMember(
             return false;
         }
 
-        await member.kick(
-            reason
-        );
+        await member.kick(reason);
 
         console.log(
             `[KICKED] ${
@@ -362,11 +231,24 @@ async function kickMember(
                 member?.id ??
                 "Unknown user"
             }:`,
-            error.message
+            error
         );
 
         return false;
     }
+}
+
+// ========================================
+// LOCKABLE CHANNEL CHECK
+// ========================================
+
+function isLockableChannel(channel) {
+    return (
+        channel?.type ===
+            ChannelType.GuildText ||
+        channel?.type ===
+            ChannelType.GuildAnnouncement
+    );
 }
 
 // ========================================
@@ -375,89 +257,47 @@ async function kickMember(
 
 async function lockdown(
     guild,
-    reason =
-        "Raid detected"
+    reason = "Raid detected"
 ) {
     if (
-        !guild ||
-        !guild.id ||
-        !guild.channels ||
-        !guild.roles
+        !guild?.channels?.cache ||
+        !guild?.roles?.everyone
     ) {
         return false;
     }
 
     const state =
-        getGuildState(
-            guild
-        );
-
-    if (!state) {
-        return false;
-    }
+        getGuildState(guild);
 
     if (
+        !state ||
         state.lockdown
     ) {
         return false;
     }
 
-    const everyoneRole =
-        guild.roles.everyone;
+    state.lockdown = true;
 
-    if (!everyoneRole) {
-        console.error(
-            `[LOCKDOWN ERROR] Could not find @everyone role in ${guild.name}`
-        );
-
-        return false;
-    }
-
-    state.lockdown =
-        true;
-
-    console.log(
-        `[LOCKDOWN] ${guild.name}`
-    );
-
-    console.log(
-        `[REASON] ${reason}`
-    );
-
-    let changedChannels =
-        0;
+    let changedChannels = 0;
 
     for (
         const channel of
         guild.channels.cache.values()
     ) {
+        if (
+            !isLockableChannel(channel) ||
+            !channel.permissionOverwrites?.edit
+        ) {
+            continue;
+        }
+
         try {
-            if (
-                channel.type !==
-                    ChannelType.GuildText &&
-                channel.type !==
-                    ChannelType.GuildAnnouncement
-            ) {
-                continue;
-            }
-
-            if (
-                !channel.permissionOverwrites ||
-                typeof channel
-                    .permissionOverwrites
-                    .edit !==
-                    "function"
-            ) {
-                continue;
-            }
-
             await channel
                 .permissionOverwrites
                 .edit(
-                    everyoneRole,
+                    guild.roles.everyone,
                     {
-                        SendMessages:
-                            false
+                        SendMessages: false
                     },
                     {
                         reason:
@@ -473,18 +313,18 @@ async function lockdown(
                     channel.name ??
                     channel.id
                 }:`,
-                error.message
+                error
             );
         }
     }
 
     console.log(
-        `[LOCKDOWN] ${changedChannels} channel(s) updated.`
+        `[LOCKDOWN] ${guild.name}: ` +
+        `${changedChannels} channel(s) updated. ` +
+        `Reason: ${reason}`
     );
 
-    if (
-        state.lockdownTimer
-    ) {
+    if (state.lockdownTimer) {
         clearTimeout(
             state.lockdownTimer
         );
@@ -496,18 +336,16 @@ async function lockdown(
 
     state.lockdownTimer =
         setTimeout(
-            async () => {
-                try {
-                    await unlock(
-                        guild
+            () => {
+                unlock(guild)
+                    .catch(
+                        error => {
+                            console.error(
+                                "Automatic unlock error:",
+                                error
+                            );
+                        }
                     );
-
-                } catch (error) {
-                    console.error(
-                        "❌ Automatic unlock error:",
-                        error
-                    );
-                }
             },
             duration
         );
@@ -519,89 +357,52 @@ async function lockdown(
 // UNLOCK
 // ========================================
 
-async function unlock(
-    guild
-) {
+async function unlock(guild) {
     if (
-        !guild ||
-        !guild.id ||
-        !guild.channels ||
-        !guild.roles
+        !guild?.channels?.cache ||
+        !guild?.roles?.everyone
     ) {
         return false;
     }
 
     const state =
-        getGuildState(
-            guild
-        );
-
-    if (!state) {
-        return false;
-    }
+        getGuildState(guild);
 
     if (
+        !state ||
         !state.lockdown
     ) {
         return false;
     }
 
-    const everyoneRole =
-        guild.roles.everyone;
-
-    if (!everyoneRole) {
-        console.error(
-            `[UNLOCK ERROR] Could not find @everyone role in ${guild.name}`
-        );
-
-        return false;
-    }
-
-    if (
-        state.lockdownTimer
-    ) {
+    if (state.lockdownTimer) {
         clearTimeout(
             state.lockdownTimer
         );
 
-        state.lockdownTimer =
-            null;
+        state.lockdownTimer = null;
     }
 
-    let changedChannels =
-        0;
+    let changedChannels = 0;
 
     for (
         const channel of
         guild.channels.cache.values()
     ) {
+        if (
+            !isLockableChannel(channel) ||
+            !channel.permissionOverwrites?.edit
+        ) {
+            continue;
+        }
+
         try {
-            if (
-                channel.type !==
-                    ChannelType.GuildText &&
-                channel.type !==
-                    ChannelType.GuildAnnouncement
-            ) {
-                continue;
-            }
-
-            if (
-                !channel.permissionOverwrites ||
-                typeof channel
-                    .permissionOverwrites
-                    .edit !==
-                    "function"
-            ) {
-                continue;
-            }
-
             await channel
                 .permissionOverwrites
                 .edit(
-                    everyoneRole,
+                    guild.roles.everyone,
                     {
-                        SendMessages:
-                            null
+                        SendMessages: null
                     },
                     {
                         reason:
@@ -617,20 +418,16 @@ async function unlock(
                     channel.name ??
                     channel.id
                 }:`,
-                error.message
+                error
             );
         }
     }
 
-    state.lockdown =
-        false;
+    state.lockdown = false;
 
     console.log(
-        `[UNLOCK] ${guild.name}`
-    );
-
-    console.log(
-        `[UNLOCK] ${changedChannels} channel(s) updated.`
+        `[UNLOCK] ${guild.name}: ` +
+        `${changedChannels} channel(s) updated.`
     );
 
     return true;
@@ -640,26 +437,10 @@ async function unlock(
 // LOCKDOWN STATUS
 // ========================================
 
-function isLockedDown(
-    guild
-) {
-    const serverId =
-        getServerId(
-            guild
-        );
-
-    if (!serverId) {
-        return false;
-    }
-
-    const state =
-        getGuildState(
-            serverId
-        );
-
+function isLockedDown(guild) {
     return (
-        state?.lockdown ===
-        true
+        getGuildState(guild)
+            ?.lockdown === true
     );
 }
 
@@ -667,13 +448,8 @@ function isLockedDown(
 // BLOCKED WORD CLEANER
 // ========================================
 
-function cleanBlockedWord(
-    word
-) {
-    if (
-        typeof word !==
-        "string"
-    ) {
+function cleanBlockedWord(word) {
+    if (typeof word !== "string") {
         return "";
     }
 
@@ -683,7 +459,7 @@ function cleanBlockedWord(
 }
 
 // ========================================
-// ADD BLOCKED WORD
+// BLOCKED WORDS
 // ========================================
 
 async function addBlockedWord(
@@ -691,41 +467,20 @@ async function addBlockedWord(
     word
 ) {
     const serverId =
-        getServerId(
-            guild
-        );
-
-    if (!serverId) {
-        return false;
-    }
+        getServerId(guild);
 
     const cleanWord =
-        cleanBlockedWord(
-            word
-        );
-
-    if (!cleanWord) {
-        return false;
-    }
+        cleanBlockedWord(word);
 
     const maxLength =
         config.blockedWordMaxLength ??
         100;
 
     if (
-        cleanWord.length >
-        maxLength
-    ) {
-        return false;
-    }
-
-    if (
-        cleanWord.includes(
-            "\n"
-        ) ||
-        cleanWord.includes(
-            "\r"
-        )
+        !serverId ||
+        !cleanWord ||
+        cleanWord.length > maxLength ||
+        /[\r\n]/.test(cleanWord)
     ) {
         return false;
     }
@@ -736,29 +491,20 @@ async function addBlockedWord(
     );
 }
 
-// ========================================
-// REMOVE BLOCKED WORD
-// ========================================
-
 async function removeBlockedWord(
     guild,
     word
 ) {
     const serverId =
-        getServerId(
-            guild
-        );
-
-    if (!serverId) {
-        return false;
-    }
+        getServerId(guild);
 
     const cleanWord =
-        cleanBlockedWord(
-            word
-        );
+        cleanBlockedWord(word);
 
-    if (!cleanWord) {
+    if (
+        !serverId ||
+        !cleanWord
+    ) {
         return false;
     }
 
@@ -768,30 +514,19 @@ async function removeBlockedWord(
     );
 }
 
-// ========================================
-// GET BLOCKED WORDS
-// ========================================
-
-async function getBlockedWords(
-    guild
-) {
+async function getBlockedWords(guild) {
     const serverId =
-        getServerId(
-            guild
-        );
+        getServerId(guild);
 
     if (!serverId) {
         return [];
     }
 
     const words =
-        await database.getBlockedWords(
-            serverId
-        );
+        await database
+            .getBlockedWords(serverId);
 
-    if (
-        !Array.isArray(words)
-    ) {
+    if (!Array.isArray(words)) {
         return [];
     }
 
@@ -800,7 +535,7 @@ async function getBlockedWords(
             word => {
                 if (
                     typeof word ===
-                    "string"
+                        "string"
                 ) {
                     return cleanBlockedWord(
                         word
@@ -812,28 +547,19 @@ async function getBlockedWords(
                 );
             }
         )
-        .filter(
-            Boolean
-        );
+        .filter(Boolean);
 }
-
-// ========================================
-// FIND BLOCKED WORD
-// ========================================
 
 async function findBlockedWord(
     guild,
     content
 ) {
     const serverId =
-        getServerId(
-            guild
-        );
+        getServerId(guild);
 
     if (
         !serverId ||
-        typeof content !==
-            "string" ||
+        typeof content !== "string" ||
         !content
     ) {
         return null;
@@ -854,20 +580,15 @@ async function authorizeUser(
     userId
 ) {
     const serverId =
-        getServerId(
-            guild
-        );
+        getServerId(guild);
 
-    if (
-        !serverId ||
-        !userId
-    ) {
+    if (!serverId || !userId) {
         return false;
     }
 
     return database.authorizeUser(
         serverId,
-        userId
+        String(userId)
     );
 }
 
@@ -876,20 +597,15 @@ async function unauthorizeUser(
     userId
 ) {
     const serverId =
-        getServerId(
-            guild
-        );
+        getServerId(guild);
 
-    if (
-        !serverId ||
-        !userId
-    ) {
+    if (!serverId || !userId) {
         return false;
     }
 
     return database.unauthorizeUser(
         serverId,
-        userId
+        String(userId)
     );
 }
 
@@ -898,20 +614,15 @@ async function isAuthorizedUser(
     userId
 ) {
     const serverId =
-        getServerId(
-            guild
-        );
+        getServerId(guild);
 
-    if (
-        !serverId ||
-        !userId
-    ) {
+    if (!serverId || !userId) {
         return false;
     }
 
     return database.isAuthorizedUser(
         serverId,
-        userId
+        String(userId)
     );
 }
 
@@ -920,30 +631,21 @@ async function isUnauthorizedUser(
     userId
 ) {
     const serverId =
-        getServerId(
-            guild
-        );
+        getServerId(guild);
 
-    if (
-        !serverId ||
-        !userId
-    ) {
+    if (!serverId || !userId) {
         return false;
     }
 
     return database.isUnauthorizedUser(
         serverId,
-        userId
+        String(userId)
     );
 }
 
-async function getAuthorizedUsers(
-    guild
-) {
+async function getAuthorizedUsers(guild) {
     const serverId =
-        getServerId(
-            guild
-        );
+        getServerId(guild);
 
     if (!serverId) {
         return [];
@@ -954,13 +656,9 @@ async function getAuthorizedUsers(
     );
 }
 
-async function getUnauthorizedUsers(
-    guild
-) {
+async function getUnauthorizedUsers(guild) {
     const serverId =
-        getServerId(
-            guild
-        );
+        getServerId(guild);
 
     if (!serverId) {
         return [];
@@ -980,20 +678,15 @@ async function authorizeRole(
     roleId
 ) {
     const serverId =
-        getServerId(
-            guild
-        );
+        getServerId(guild);
 
-    if (
-        !serverId ||
-        !roleId
-    ) {
+    if (!serverId || !roleId) {
         return false;
     }
 
     return database.authorizeRole(
         serverId,
-        roleId
+        String(roleId)
     );
 }
 
@@ -1002,20 +695,15 @@ async function unauthorizeRole(
     roleId
 ) {
     const serverId =
-        getServerId(
-            guild
-        );
+        getServerId(guild);
 
-    if (
-        !serverId ||
-        !roleId
-    ) {
+    if (!serverId || !roleId) {
         return false;
     }
 
     return database.unauthorizeRole(
         serverId,
-        roleId
+        String(roleId)
     );
 }
 
@@ -1024,20 +712,15 @@ async function isAuthorizedRole(
     roleId
 ) {
     const serverId =
-        getServerId(
-            guild
-        );
+        getServerId(guild);
 
-    if (
-        !serverId ||
-        !roleId
-    ) {
+    if (!serverId || !roleId) {
         return false;
     }
 
     return database.isAuthorizedRole(
         serverId,
-        roleId
+        String(roleId)
     );
 }
 
@@ -1046,30 +729,21 @@ async function isUnauthorizedRole(
     roleId
 ) {
     const serverId =
-        getServerId(
-            guild
-        );
+        getServerId(guild);
 
-    if (
-        !serverId ||
-        !roleId
-    ) {
+    if (!serverId || !roleId) {
         return false;
     }
 
     return database.isUnauthorizedRole(
         serverId,
-        roleId
+        String(roleId)
     );
 }
 
-async function getAuthorizedRoles(
-    guild
-) {
+async function getAuthorizedRoles(guild) {
     const serverId =
-        getServerId(
-            guild
-        );
+        getServerId(guild);
 
     if (!serverId) {
         return [];
@@ -1080,13 +754,9 @@ async function getAuthorizedRoles(
     );
 }
 
-async function getUnauthorizedRoles(
-    guild
-) {
+async function getUnauthorizedRoles(guild) {
     const serverId =
-        getServerId(
-            guild
-        );
+        getServerId(guild);
 
     if (!serverId) {
         return [];
@@ -1101,13 +771,10 @@ async function getUnauthorizedRoles(
 // GUARDIAN ACCESS CONTROL
 // ========================================
 
-async function canUseGuardian(
-    member
-) {
+async function canUseGuardian(member) {
     if (
-        !member ||
-        !member.guild ||
-        !member.id
+        !member?.guild ||
+        !member?.id
     ) {
         return false;
     }
@@ -1116,117 +783,83 @@ async function canUseGuardian(
         member.guild;
 
     const serverId =
-        getServerId(
-            guild
-        );
+        getServerId(guild);
 
     if (!serverId) {
         return false;
     }
 
-    const userId =
-        member.id;
-
-    // ====================================
-    // ADMINISTRATORS ALWAYS ALLOWED
-    // ====================================
-
+    // Server administrators are always allowed.
     if (
         member.permissions?.has(
-            "Administrator"
+            PermissionFlagsBits.Administrator
         )
     ) {
         return true;
     }
 
-    // ====================================
-    // EXPLICIT USER DENY
-    // ====================================
-
+    // Explicit user denial takes priority.
     if (
         await isUnauthorizedUser(
             guild,
-            userId
+            member.id
         )
     ) {
         return false;
     }
 
-    const memberRoles =
-        member.roles?.cache;
+    const roles =
+        member.roles?.cache?.values
+            ? [
+                ...member.roles
+                    .cache
+                    .values()
+            ]
+            : [];
 
-    // ====================================
-    // EXPLICIT ROLE DENY
-    // ====================================
+    // Explicit role denial takes priority.
+    for (const role of roles) {
+        // The @everyone role ID equals
+        // the current server ID.
+        if (role.id === serverId) {
+            continue;
+        }
 
-    if (memberRoles) {
-        for (
-            const role of
-            memberRoles.values()
+        if (
+            await isUnauthorizedRole(
+                guild,
+                role.id
+            )
         ) {
-            // @everyone role ID equals
-            // the server ID.
-            if (
-                role.id ===
-                serverId
-            ) {
-                continue;
-            }
-
-            if (
-                await isUnauthorizedRole(
-                    guild,
-                    role.id
-                )
-            ) {
-                return false;
-            }
+            return false;
         }
     }
 
-    // ====================================
-    // EXPLICIT USER ALLOW
-    // ====================================
-
+    // Explicit user authorization.
     if (
         await isAuthorizedUser(
             guild,
-            userId
+            member.id
         )
     ) {
         return true;
     }
 
-    // ====================================
-    // AUTHORIZED ROLE ALLOW
-    // ====================================
+    // Authorized role.
+    for (const role of roles) {
+        if (role.id === serverId) {
+            continue;
+        }
 
-    if (memberRoles) {
-        for (
-            const role of
-            memberRoles.values()
+        if (
+            await isAuthorizedRole(
+                guild,
+                role.id
+            )
         ) {
-            if (
-                role.id ===
-                serverId
-            ) {
-                continue;
-            }
-
-            if (
-                await isAuthorizedRole(
-                    guild,
-                    role.id
-                )
-            ) {
-                return true;
-            }
+            return true;
         }
     }
-
-    // ====================================
-    // DEFAULT DENY
-    // ====================================
 
     return false;
 }
@@ -1241,27 +874,22 @@ async function setAutoCategoryMessage(
     message
 ) {
     const serverId =
-        getServerId(
-            guild
-        );
+        getServerId(guild);
 
-    if (
-        !serverId ||
-        !categoryId ||
-        typeof message !==
-            "string" ||
-        !message.trim()
-    ) {
-        return false;
-    }
+    const cleanMessage =
+        typeof message === "string"
+            ? message.trim()
+            : "";
 
     const maxLength =
         config.autoMessageMaxLength ??
         2000;
 
     if (
-        message.trim().length >
-        maxLength
+        !serverId ||
+        !categoryId ||
+        !cleanMessage ||
+        cleanMessage.length > maxLength
     ) {
         return false;
     }
@@ -1269,8 +897,8 @@ async function setAutoCategoryMessage(
     return database
         .setAutoCategoryMessage(
             serverId,
-            categoryId,
-            message.trim()
+            String(categoryId),
+            cleanMessage
         );
 }
 
@@ -1279,21 +907,16 @@ async function removeAutoCategoryMessage(
     categoryId
 ) {
     const serverId =
-        getServerId(
-            guild
-        );
+        getServerId(guild);
 
-    if (
-        !serverId ||
-        !categoryId
-    ) {
+    if (!serverId || !categoryId) {
         return false;
     }
 
     return database
         .removeAutoCategoryMessage(
             serverId,
-            categoryId
+            String(categoryId)
         );
 }
 
@@ -1302,21 +925,16 @@ async function getAutoCategoryMessage(
     categoryId
 ) {
     const serverId =
-        getServerId(
-            guild
-        );
+        getServerId(guild);
 
-    if (
-        !serverId ||
-        !categoryId
-    ) {
+    if (!serverId || !categoryId) {
         return null;
     }
 
     return database
         .getAutoCategoryMessage(
             serverId,
-            categoryId
+            String(categoryId)
         );
 }
 
@@ -1324,9 +942,7 @@ async function getAutoCategoryMessages(
     guild
 ) {
     const serverId =
-        getServerId(
-            guild
-        );
+        getServerId(guild);
 
     if (!serverId) {
         return [];
@@ -1352,21 +968,16 @@ async function setBanTriggerChannel(
     channelId
 ) {
     const serverId =
-        getServerId(
-            guild
-        );
+        getServerId(guild);
 
-    if (
-        !serverId ||
-        !channelId
-    ) {
+    if (!serverId || !channelId) {
         return false;
     }
 
     return database
         .setBanTriggerChannel(
             serverId,
-            channelId
+            String(channelId)
         );
 }
 
@@ -1374,9 +985,7 @@ async function removeBanTriggerChannel(
     guild
 ) {
     const serverId =
-        getServerId(
-            guild
-        );
+        getServerId(guild);
 
     if (!serverId) {
         return false;
@@ -1392,9 +1001,7 @@ async function getBanTriggerChannel(
     guild
 ) {
     const serverId =
-        getServerId(
-            guild
-        );
+        getServerId(guild);
 
     if (!serverId) {
         return null;
@@ -1407,15 +1014,310 @@ async function getBanTriggerChannel(
 }
 
 // ========================================
+// IMAGE ATTACHMENT CHECK
+// ========================================
+
+function isImageAttachment(
+    attachment
+) {
+    if (!attachment) {
+        return false;
+    }
+
+    if (
+        typeof attachment.contentType ===
+            "string" &&
+        attachment.contentType
+            .toLowerCase()
+            .startsWith("image/")
+    ) {
+        return true;
+    }
+
+    const fileName =
+        String(
+            attachment.name ??
+            ""
+        ).toLowerCase();
+
+    return /\.(png|jpe?g|gif|webp|bmp|tiff?|avif)$/i
+        .test(fileName);
+}
+
+// ========================================
+// CREATE IMAGE HASH
+// ========================================
+
+async function createImageHash(
+    attachment
+) {
+    if (
+        !attachment?.url ||
+        !isImageAttachment(attachment)
+    ) {
+        return null;
+    }
+
+    const maximumSize =
+        config.imageSpamMaxFileSize ??
+        10 * 1024 * 1024;
+
+    if (
+        typeof attachment.size ===
+            "number" &&
+        attachment.size > maximumSize
+    ) {
+        return null;
+    }
+
+    try {
+        const response =
+            await fetch(
+                attachment.url
+            );
+
+        if (!response.ok) {
+            throw new Error(
+                `HTTP ${response.status}`
+            );
+        }
+
+        const arrayBuffer =
+            await response.arrayBuffer();
+
+        if (
+            arrayBuffer.byteLength >
+            maximumSize
+        ) {
+            return null;
+        }
+
+        return createHash("sha256")
+            .update(
+                Buffer.from(
+                    arrayBuffer
+                )
+            )
+            .digest("hex");
+
+    } catch (error) {
+        console.error(
+            `[IMAGE HASH ERROR] ${
+                attachment.name ??
+                attachment.id ??
+                "Unknown attachment"
+            }:`,
+            error
+        );
+
+        return null;
+    }
+}
+
+// ========================================
+// DELETE IMAGE-SPAM MESSAGES
+// ========================================
+
+async function deleteSpamMessages(
+    messages
+) {
+    const deletionTasks =
+        [
+            ...messages.values()
+        ].map(
+            async message => {
+                try {
+                    if (message?.deletable) {
+                        await message.delete();
+                    }
+
+                } catch (error) {
+                    console.error(
+                        `[IMAGE DELETE ERROR] ${
+                            message?.id ??
+                            "Unknown message"
+                        }:`,
+                        error
+                    );
+                }
+            }
+        );
+
+    await Promise.allSettled(
+        deletionTasks
+    );
+}
+
+// ========================================
+// CLEAN IMAGE-SPAM HISTORY
+// ========================================
+
+function cleanImageSpamHistory(
+    state,
+    cutoff
+) {
+    for (
+        const [
+            key,
+            record
+        ] of state.imageSpam
+    ) {
+        if (
+            record.timestamp <
+            cutoff
+        ) {
+            state.imageSpam.delete(
+                key
+            );
+        }
+    }
+}
+
+// ========================================
+// CHECK IMAGE SPAM
+// ========================================
+
+async function checkImageSpam(message) {
+    if (
+        !message?.guild ||
+        !message?.member ||
+        !message?.author ||
+        message.author.bot ||
+        message.webhookId ||
+        !message.attachments?.size
+    ) {
+        return false;
+    }
+
+    const state =
+        getGuildState(
+            message.guild
+        );
+
+    if (!state) {
+        return false;
+    }
+
+    const timeWindow =
+        config.imageSpamTimeWindow ??
+        10 * 1000;
+
+    const now =
+        Date.now();
+
+    cleanImageSpamHistory(
+        state,
+        now - timeWindow
+    );
+
+    for (
+        const attachment of
+        message.attachments.values()
+    ) {
+        const imageHash =
+            await createImageHash(
+                attachment
+            );
+
+        if (!imageHash) {
+            continue;
+        }
+
+        const trackingKey =
+            `${message.author.id}:${imageHash}`;
+
+        const previous =
+            state.imageSpam.get(
+                trackingKey
+            );
+
+        if (
+            previous &&
+            now - previous.timestamp <=
+                timeWindow &&
+            previous.channelId !==
+                message.channelId
+        ) {
+            const spamMessages =
+                new Map(
+                    previous.messages
+                );
+
+            spamMessages.set(
+                message.id,
+                message
+            );
+
+            state.imageSpam.delete(
+                trackingKey
+            );
+
+            await deleteSpamMessages(
+                spamMessages
+            );
+
+            await kickMember(
+                message.member,
+                "Posted the same image in different channels within 10 seconds"
+            );
+
+            console.log(
+                `[IMAGE SPAM] ${
+                    message.author.tag
+                } detected in ${
+                    message.guild.name
+                }.`
+            );
+
+            return true;
+        }
+
+        if (previous) {
+            previous.timestamp =
+                now;
+
+            previous.channelId =
+                message.channelId;
+
+            previous.messages.set(
+                message.id,
+                message
+            );
+
+        } else {
+            state.imageSpam.set(
+                trackingKey,
+                {
+                    timestamp:
+                        now,
+
+                    channelId:
+                        message.channelId,
+
+                    messages:
+                        new Map([
+                            [
+                                message.id,
+                                message
+                            ]
+                        ])
+                }
+            );
+        }
+    }
+
+    return false;
+}
+
+// ========================================
 // EXPORTS
 // ========================================
 
 module.exports = {
-
     // SERVER HELPERS
     getServerId,
 
-    // RAID / JOIN PROTECTION
+    // RAID AND JOIN PROTECTION
     recordJoin,
     getRecentJoinCount,
     isSuspiciousAccount,
@@ -1467,5 +1369,8 @@ module.exports = {
     // BAN TRIGGER CHANNEL
     setBanTriggerChannel,
     removeBanTriggerChannel,
-    getBanTriggerChannel
+    getBanTriggerChannel,
+
+    // IMAGE-SPAM PROTECTION
+    checkImageSpam
 };
