@@ -4,11 +4,11 @@ module.exports = {
     // RAID PROTECTION
     // ========================================
 
-    // Number of joins required to trigger
-    // automatic raid protection.
+    // Number of joins required to trigger a raid.
     raidJoinThreshold: 8,
 
-    // Raid detection window in seconds.
+    // Time window used for raid detection.
+    // Value is in seconds.
     raidTimeWindow: 10,
 
     // ========================================
@@ -20,9 +20,26 @@ module.exports = {
     suspiciousAccountAge:
         24 * 60 * 60 * 1000,
 
-    // Automatically kick suspicious
-    // new accounts.
+    // Automatically kick accounts
+    // younger than 24 hours.
     kickNewAccounts: true,
+
+    // ========================================
+    // NEW-MEMBER WELCOME DM
+    // ========================================
+
+    // Wait one minute after a member joins
+    // before sending the saved welcome DM.
+    //
+    // This value is in milliseconds.
+    welcomeDmDelay:
+        60 * 1000,
+
+    // Maximum length of the welcome message.
+    welcomeDmMaxLength: 2000,
+
+    // Maximum length of the optional image URL.
+    welcomeDmImageUrlMaxLength: 2048,
 
     // ========================================
     // SERVER LOCKDOWN
@@ -45,8 +62,8 @@ module.exports = {
     imageSpamTimeWindow:
         10 * 1000,
 
-    // Maximum image size that Guardian
-    // downloads when checking for duplicates.
+    // Maximum image size Guardian downloads
+    // while comparing images.
     //
     // This is 10 megabytes.
     imageSpamMaxFileSize:
@@ -63,84 +80,81 @@ module.exports = {
     wordTimeoutDuration:
         24 * 60 * 60 * 1000,
 
-    // Maximum length of one blocked-word
-    // database entry.
-    blockedWordMaxLength: 100,
-
     // ========================================
-    // STRICT WORD FILTER
+    // SAFE WORD FILTER
     // ========================================
 
     /*
-     * Guardian uses strict whole-word
-     * matching.
+     * Keep Unicode normalization enabled.
      *
-     * Example blocked word:
+     * Example:
      *
-     * ass
+     * blocked:
+     * shit
      *
-     * BLOCK:
-     *
-     * ass
-     * ASS
-     * "ass"
-     * ass!
-     *
-     * ALLOW:
-     *
-     * class
-     * grass
-     * glasses
-     * assassin
-     *
-     * Advanced matching remains disabled
-     * to reduce false positives.
+     * catches:
+     * shit
+     * SHIT
+     * 𝐬𝐡𝐢𝐭
+     * ｓｈｉｔ
      */
+    normalizeUnicodeWords: true,
 
-    // Do not convert stylized Unicode
-    // characters into blocked words.
-    normalizeUnicodeWords: false,
+    // ========================================
+    // LOOKALIKE CHARACTERS
+    // ========================================
 
-    // Do not convert substitutions such as:
-    //
-    // sh1t
-    // sh!t
-    // $hit
-    //
-    // into blocked words.
-    detectLookalikeCharacters: false,
+    /*
+     * Detect common deliberate substitutions:
+     *
+     * sh1t
+     * sh!t
+     * $hit
+     */
+    detectLookalikeCharacters: true,
 
-    // Do not match separated characters:
-    //
-    // s h i t
-    // s.h.i.t
-    // s-h-i-t
-    detectSeparatedWords: false,
+    // ========================================
+    // SEPARATED WORDS
+    // ========================================
 
-    // Do not reduce repeated letters:
-    //
-    // shiiit
-    // fuuuck
-    detectRepeatedLetters: false,
+    /*
+     * Detect obvious separated bypasses:
+     *
+     * s h i t
+     * s.h.i.t
+     * s-h-i-t
+     *
+     * The matcher should require at least
+     * one separator between letters.
+     */
+    detectSeparatedWords: true,
+
+    // ========================================
+    // REPEATED LETTERS
+    // ========================================
+
+    /*
+     * Detect deliberate repeated-letter bypasses:
+     *
+     * shiiit
+     * fuuuck
+     */
+    detectRepeatedLetters: true,
 
     // ========================================
     // FUZZY MATCHING
     // ========================================
 
     /*
-     * Fuzzy matching stays disabled.
+     * Keep fuzzy matching disabled.
      *
-     * Fuzzy matching can incorrectly flag
-     * ordinary words that only resemble
-     * a blocked word.
+     * Fuzzy matching can mistake an ordinary
+     * word for a similar blocked word.
      */
     fuzzyWordMatching: false,
 
     /*
-     * These values are retained in case
-     * fuzzy matching is added later.
-     *
-     * They have no effect while
+     * These settings have no effect while
      * fuzzyWordMatching is false.
      */
     fuzzyMinimumWordLength: 8,
@@ -154,10 +168,17 @@ module.exports = {
     fuzzyRequireSameLastCharacter: true,
 
     // ========================================
+    // BLOCKED-WORD LIMITS
+    // ========================================
+
+    // Maximum length of one blocked-word entry.
+    blockedWordMaxLength: 100,
+
+    // ========================================
     // AUTOMATIC CATEGORY MESSAGES
     // ========================================
 
-    // Discord's standard message limit.
+    // Discord's normal message limit.
     autoMessageMaxLength: 2000,
 
     // ========================================
@@ -165,10 +186,9 @@ module.exports = {
     // ========================================
 
     // Delete up to the previous 3 hours
-    // of messages when a member triggers
-    // the ban channel.
+    // of messages after a ban-channel trigger.
     //
-    // Discord expects this value in seconds.
+    // Discord expects seconds.
     banDeleteMessageSeconds:
         3 * 60 * 60
 };
