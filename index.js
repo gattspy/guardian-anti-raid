@@ -33,6 +33,7 @@ const {
     getBlockedWords,
     getUnauthorizedRoles,
     getUnauthorizedUsers,
+    getWelcomeDm,
     isLockedDown,
     isSuspiciousAccount,
     isWhitelisted,
@@ -42,8 +43,10 @@ const {
     removeAutoCategoryMessage,
     removeBanTriggerChannel,
     removeBlockedWord,
+    removeWelcomeDm,
     setAutoCategoryMessage,
     setBanTriggerChannel,
+    setWelcomeDm,
     unauthorizeRole,
     unauthorizeUser,
     unlock
@@ -69,11 +72,16 @@ if (!process.env.DATABASE_URL) {
     process.exit(1);
 }
 
-// CLIENT_ID is only required by
+// CLIENT_ID is only required inside
 // deploy-commands.js.
 
 let databaseReady = false;
 let shuttingDown = false;
+
+// Stores temporary one-minute DM timers.
+// Each server and member gets a unique timer.
+const welcomeDmTimers =
+    new Map();
 
 // ========================================
 // EXPRESS SERVER
@@ -82,8 +90,9 @@ let shuttingDown = false;
 const app = express();
 
 const PORT =
-    Number(process.env.PORT) ||
-    10000;
+    Number(
+        process.env.PORT
+    ) || 10000;
 
 // ========================================
 // DISCORD CLIENT
@@ -127,7 +136,11 @@ app.get(
             client.isReady();
 
         response
-            .status(online ? 200 : 503)
+            .status(
+                online
+                    ? 200
+                    : 503
+            )
             .json({
                 status:
                     online
@@ -177,23 +190,32 @@ async function safeReply(
         }
 
         const message =
-            String(content ?? "");
+            String(
+                content ?? ""
+            );
 
         if (interaction.deferred) {
             await interaction.editReply({
-                content: message
+                content:
+                    message
             });
 
-        } else if (interaction.replied) {
+        } else if (
+            interaction.replied
+        ) {
             await interaction.followUp({
-                content: message,
+                content:
+                    message,
+
                 flags:
                     MessageFlags.Ephemeral
             });
 
         } else {
             await interaction.reply({
-                content: message,
+                content:
+                    message,
+
                 flags:
                     MessageFlags.Ephemeral
             });
@@ -375,11 +397,15 @@ client.once(
         );
 
         console.log(
-            "🚫 Exact whole-word filter: ENABLED"
+            "🚫 Blocked-word filter: ENABLED"
         );
 
         console.log(
             "📨 Category auto-messages: ENABLED"
+        );
+
+        console.log(
+            "💌 One-minute welcome DMs: ENABLED"
         );
 
         console.log(
@@ -391,6 +417,158 @@ client.once(
         );
     }
 );
+
+// ========================================
+// WELCOME DM TIMER HELPERS
+// ========================================
+
+function getWelcomeTimerKey(
+    guildId,
+    userId
+) {
+    return `${guildId}:${userId}`;
+}
+
+function scheduleWelcomeDm(member) {
+    if (
+        !member?.guild?.id ||
+        !member?.id ||
+        member.user?.bot
+    ) {
+        return;
+    }
+
+    const guildId =
+        member.guild.id;
+
+    const userId =
+        member.id;
+
+    const timerKey =
+        getWelcomeTimerKey(
+            guildId,
+            userId
+        );
+
+    const previousTimer =
+        welcomeDmTimers.get(
+            timerKey
+        );
+
+    if (previousTimer) {
+        clearTimeout(
+            previousTimer
+        );
+    }
+
+    const delay =
+        config.welcomeDmDelay ??
+        60 * 1000;
+
+    const timer =
+        setTimeout(
+            async () => {
+                welcomeDmTimers.delete(
+                    timerKey
+                );
+
+                try {
+                    if (
+                        !databaseReady ||
+                        !client.isReady()
+                    ) {
+                        return;
+                    }
+
+                    const guild =
+                        client.guilds
+                            .cache
+                            .get(
+                                guildId
+                            );
+
+                    if (!guild) {
+                        return;
+                    }
+
+                    // Force-fetch the member to confirm
+                    // they are still in the server.
+                    const currentMember =
+                        await guild.members
+                            .fetch({
+                                user:
+                                    userId,
+
+                                force:
+                                    true
+                            })
+                            .catch(
+                                () => null
+                            );
+
+                    if (!currentMember) {
+                        return;
+                    }
+
+                    const setting =
+                        await getWelcomeDm(
+                            guild
+                        );
+
+                    if (
+                        !setting ||
+                        !setting.message
+                    ) {
+                        return;
+                    }
+
+                    const payload = {
+                        content:
+                            setting.message,
+
+                        allowedMentions: {
+                            parse: []
+                        }
+                    };
+
+                    if (setting.imageUrl) {
+                        payload.embeds = [
+                            new EmbedBuilder()
+                                .setColor(
+                                    0x5865F2
+                                )
+                                .setImage(
+                                    setting.imageUrl
+                                )
+                        ];
+                    }
+
+                    await currentMember.send(
+                        payload
+                    );
+
+                    console.log(
+                        `[WELCOME DM] Sent to ${currentMember.user.tag} from ${guild.name}`
+                    );
+
+                } catch (error) {
+                    // This commonly occurs when the
+                    // member has direct messages disabled.
+                    console.warn(
+                        `[WELCOME DM] Could not DM ${userId} in ${guildId}:`,
+                        error?.message ??
+                        error
+                    );
+                }
+            },
+            delay
+        );
+
+    welcomeDmTimers.set(
+        timerKey,
+        timer
+    );
+}
 
 // ========================================
 // MEMBER JOIN PROTECTION
@@ -412,6 +590,8 @@ client.on(
                 `[JOIN] ${member.user.tag} joined ${member.guild.name}`
             );
 
+            // Whitelisted members bypass
+            // protection but still receive the DM.
             if (
                 isWhitelisted(
                     member
@@ -421,9 +601,15 @@ client.on(
                     `[WHITELIST] ${member.user.tag} bypassed new-account protection.`
                 );
 
+                scheduleWelcomeDm(
+                    member
+                );
+
                 return;
             }
 
+            // Suspicious accounts are kicked
+            // and therefore do not receive a DM.
             if (
                 config.kickNewAccounts &&
                 isSuspiciousAccount(
@@ -437,6 +623,10 @@ client.on(
 
                 return;
             }
+
+            scheduleWelcomeDm(
+                member
+            );
 
             const recentJoins =
                 recordJoin(
@@ -457,7 +647,8 @@ client.on(
             );
 
             if (
-                recentJoins < raidThreshold ||
+                recentJoins <
+                    raidThreshold ||
                 isLockedDown(
                     member.guild
                 )
@@ -547,6 +738,36 @@ client.on(
                 error
             );
         }
+    }
+);
+
+// ========================================
+// MEMBER LEAVE TIMER CLEANUP
+// ========================================
+
+client.on(
+    "guildMemberRemove",
+    member => {
+        const timerKey =
+            getWelcomeTimerKey(
+                member.guild.id,
+                member.id
+            );
+
+        const timer =
+            welcomeDmTimers.get(
+                timerKey
+            );
+
+        if (timer) {
+            clearTimeout(
+                timer
+            );
+        }
+
+        welcomeDmTimers.delete(
+            timerKey
+        );
     }
 );
 
@@ -687,10 +908,6 @@ async function checkBlockedWordMessage(
 // NEW MESSAGE HANDLER
 // ========================================
 
-// This is the only messageCreate listener.
-// It handles the ban channel, image spam,
-// and blocked words in that order.
-
 client.on(
     "messageCreate",
     async message => {
@@ -775,7 +992,7 @@ client.on(
             }
 
             // ====================================
-            // BLOCKED-WORD PROTECTION
+            // BLOCKED-WORD FILTER
             // ====================================
 
             await checkBlockedWordMessage(
@@ -834,16 +1051,136 @@ client.on(
 );
 
 // ========================================
-// AUTOMESSAGE MODAL SUBMISSION
+// MODAL SUBMISSION HANDLER
 // ========================================
 
 async function handleModal(
     interaction
 ) {
+    // ====================================
+    // WELCOME DM MODAL
+    // ====================================
+
     if (
-        !interaction.customId.startsWith(
-            "automessage-set:"
-        )
+        interaction.customId ===
+        "welcome-dm-set"
+    ) {
+        if (
+            !interaction.guild ||
+            !databaseReady
+        ) {
+            await safeReply(
+                interaction,
+                "❌ Guardian or PostgreSQL is not ready."
+            );
+
+            return true;
+        }
+
+        if (
+            !isAdministrator(
+                interaction
+            )
+        ) {
+            await safeReply(
+                interaction,
+                "❌ Only server administrators can configure the welcome DM."
+            );
+
+            return true;
+        }
+
+        const message =
+            interaction.fields
+                .getTextInputValue(
+                    "welcome-message"
+                )
+                .trim();
+
+        const imageUrl =
+            interaction.fields
+                .getTextInputValue(
+                    "welcome-image-url"
+                )
+                .trim();
+
+        const maximumMessageLength =
+            config.welcomeDmMaxLength ??
+            2000;
+
+        const maximumUrlLength =
+            config.welcomeDmImageUrlMaxLength ??
+            2048;
+
+        if (
+            !message ||
+            message.length >
+                maximumMessageLength ||
+            imageUrl.length >
+                maximumUrlLength
+        ) {
+            await safeReply(
+                interaction,
+                "❌ The welcome message or image URL is invalid."
+            );
+
+            return true;
+        }
+
+        if (imageUrl) {
+            try {
+                const parsedUrl =
+                    new URL(
+                        imageUrl
+                    );
+
+                if (
+                    parsedUrl.protocol !==
+                        "https:" &&
+                    parsedUrl.protocol !==
+                        "http:"
+                ) {
+                    throw new Error(
+                        "Invalid URL protocol"
+                    );
+                }
+
+            } catch {
+                await safeReply(
+                    interaction,
+                    "❌ The image must use a valid http:// or https:// URL."
+                );
+
+                return true;
+            }
+        }
+
+        const saved =
+            await setWelcomeDm(
+                interaction.guild,
+                message,
+                imageUrl || null
+            );
+
+        await safeReply(
+            interaction,
+            saved
+                ? "✅ The one-minute welcome DM was saved."
+                : "❌ Could not save the welcome DM."
+        );
+
+        return true;
+    }
+
+    // ====================================
+    // CATEGORY AUTOMESSAGE MODAL
+    // ====================================
+
+    if (
+        !interaction.customId
+            .startsWith(
+                "automessage-set:"
+            )
     ) {
         return false;
     }
@@ -860,12 +1197,11 @@ async function handleModal(
         return true;
     }
 
-    const allowed =
-        await guardianAccessAllowed(
+    if (
+        !await guardianAccessAllowed(
             interaction
-        );
-
-    if (!allowed) {
+        )
+    ) {
         await safeReply(
             interaction,
             "❌ You are not authorized to use Guardian Anti-Raid."
@@ -948,6 +1284,76 @@ async function handleAdminCommand(
     interaction,
     command
 ) {
+    // ====================================
+    // REMOVE WELCOME DM
+    // ====================================
+
+    if (
+        command ===
+        "welcome-dm-remove"
+    ) {
+        const removed =
+            await removeWelcomeDm(
+                interaction.guild
+            );
+
+        await safeReply(
+            interaction,
+            removed
+                ? "✅ The new-member welcome DM was disabled."
+                : "⚠️ No welcome DM was configured."
+        );
+
+        return true;
+    }
+
+    // ====================================
+    // WELCOME DM STATUS
+    // ====================================
+
+    if (
+        command ===
+        "welcome-dm-status"
+    ) {
+        const setting =
+            await getWelcomeDm(
+                interaction.guild
+            );
+
+        if (!setting) {
+            await safeReply(
+                interaction,
+                "📭 No new-member welcome DM is configured."
+            );
+
+            return true;
+        }
+
+        const delaySeconds =
+            Math.round(
+                (
+                    config.welcomeDmDelay ??
+                    60000
+                ) / 1000
+            );
+
+        const output =
+            "💌 **WELCOME DM ACTIVE**\n\n" +
+            `**Delay:** ${delaySeconds} seconds\n` +
+            `**Message:**\n${setting.message}\n\n` +
+            `**Image:** ${
+                setting.imageUrl ??
+                "None"
+            }`;
+
+        await safeReply(
+            interaction,
+            truncate(output)
+        );
+
+        return true;
+    }
+
     // ====================================
     // USER AUTHORIZATION
     // ====================================
@@ -1242,7 +1648,10 @@ async function handleGuardianCommand(
     // LOCKDOWN
     // ====================================
 
-    if (command === "lockdown") {
+    if (
+        command ===
+        "lockdown"
+    ) {
         const changed =
             await lockdown(
                 interaction.guild,
@@ -1263,7 +1672,10 @@ async function handleGuardianCommand(
     // UNLOCK
     // ====================================
 
-    if (command === "unlock") {
+    if (
+        command ===
+        "unlock"
+    ) {
         const changed =
             await unlock(
                 interaction.guild
@@ -1283,7 +1695,10 @@ async function handleGuardianCommand(
     // RAID STATUS
     // ====================================
 
-    if (command === "raidstatus") {
+    if (
+        command ===
+        "raidstatus"
+    ) {
         await safeReply(
             interaction,
             isLockedDown(
@@ -1509,15 +1924,12 @@ async function handleGuardianCommand(
 // INTERACTION HANDLER
 // ========================================
 
-// This is the only interactionCreate
-// listener in the file.
-
 client.on(
     "interactionCreate",
     async interaction => {
         try {
             // ====================================
-            // MODAL SUBMISSION
+            // MODAL SUBMISSIONS
             // ====================================
 
             if (
@@ -1558,23 +1970,18 @@ client.on(
                 interaction.commandName;
 
             // ====================================
-            // AUTOMESSAGE MODAL
+            // CATEGORY AUTOMESSAGE MODAL
             // ====================================
-
-            // This must run before deferReply,
-            // because Discord cannot show a modal
-            // after an interaction is deferred.
 
             if (
                 command ===
                 "automessage-set"
             ) {
-                const allowed =
-                    await guardianAccessAllowed(
+                if (
+                    !await guardianAccessAllowed(
                         interaction
-                    );
-
-                if (!allowed) {
+                    )
+                ) {
                     await safeReply(
                         interaction,
                         "❌ You are not authorized to use Guardian Anti-Raid."
@@ -1602,7 +2009,7 @@ client.on(
                     return;
                 }
 
-                const input =
+                const messageInput =
                     new TextInputBuilder()
                         .setCustomId(
                             "message"
@@ -1622,12 +2029,6 @@ client.on(
                             "Enter the automatic message..."
                         );
 
-                const row =
-                    new ActionRowBuilder()
-                        .addComponents(
-                            input
-                        );
-
                 const modal =
                     new ModalBuilder()
                         .setCustomId(
@@ -1637,7 +2038,98 @@ client.on(
                             "Set Automatic Message"
                         )
                         .addComponents(
-                            row
+                            new ActionRowBuilder()
+                                .addComponents(
+                                    messageInput
+                                )
+                        );
+
+                await interaction.showModal(
+                    modal
+                );
+
+                return;
+            }
+
+            // ====================================
+            // WELCOME DM MODAL
+            // ====================================
+
+            if (
+                command ===
+                "welcome-dm-set"
+            ) {
+                if (
+                    !isAdministrator(
+                        interaction
+                    )
+                ) {
+                    await safeReply(
+                        interaction,
+                        "❌ Only server administrators can configure the welcome DM."
+                    );
+
+                    return;
+                }
+
+                const messageInput =
+                    new TextInputBuilder()
+                        .setCustomId(
+                            "welcome-message"
+                        )
+                        .setLabel(
+                            "Welcome message"
+                        )
+                        .setStyle(
+                            TextInputStyle.Paragraph
+                        )
+                        .setRequired(true)
+                        .setMaxLength(
+                            config.welcomeDmMaxLength ??
+                            2000
+                        )
+                        .setPlaceholder(
+                            "Welcome! Please read our rules..."
+                        );
+
+                const imageInput =
+                    new TextInputBuilder()
+                        .setCustomId(
+                            "welcome-image-url"
+                        )
+                        .setLabel(
+                            "Image URL (optional)"
+                        )
+                        .setStyle(
+                            TextInputStyle.Short
+                        )
+                        .setRequired(false)
+                        .setMaxLength(
+                            config.welcomeDmImageUrlMaxLength ??
+                            2048
+                        )
+                        .setPlaceholder(
+                            "https://example.com/welcome.png"
+                        );
+
+                const modal =
+                    new ModalBuilder()
+                        .setCustomId(
+                            "welcome-dm-set"
+                        )
+                        .setTitle(
+                            "Set New-Member Welcome DM"
+                        )
+                        .addComponents(
+                            new ActionRowBuilder()
+                                .addComponents(
+                                    messageInput
+                                ),
+
+                            new ActionRowBuilder()
+                                .addComponents(
+                                    imageInput
+                                )
                         );
 
                 await interaction.showModal(
@@ -1669,7 +2161,9 @@ client.on(
                     "unauthorized-list",
                     "ban-channel-set",
                     "ban-channel-remove",
-                    "ban-channel-status"
+                    "ban-channel-status",
+                    "welcome-dm-remove",
+                    "welcome-dm-status"
                 ]);
 
             if (
@@ -1817,6 +2311,17 @@ async function shutdown(
     );
 
     try {
+        for (
+            const timer of
+            welcomeDmTimers.values()
+        ) {
+            clearTimeout(
+                timer
+            );
+        }
+
+        welcomeDmTimers.clear();
+
         client.destroy();
 
         if (
