@@ -103,6 +103,40 @@ function requireDatabase() {
 }
 
 // ========================================
+// IMAGE URL VALIDATION
+// ========================================
+
+function cleanImageUrl(value) {
+    const imageUrl =
+        cleanText(value);
+
+    if (!imageUrl) {
+        return null;
+    }
+
+    if (imageUrl.length > 2048) {
+        return null;
+    }
+
+    try {
+        const parsedUrl =
+            new URL(imageUrl);
+
+        if (
+            parsedUrl.protocol !== "https:" &&
+            parsedUrl.protocol !== "http:"
+        ) {
+            return null;
+        }
+
+        return parsedUrl.toString();
+
+    } catch {
+        return null;
+    }
+}
+
+// ========================================
 // DATABASE TRANSACTION HELPER
 // ========================================
 
@@ -111,12 +145,16 @@ async function runTransaction(callback) {
         await pool.connect();
 
     try {
-        await client.query("BEGIN");
+        await client.query(
+            "BEGIN"
+        );
 
         const result =
             await callback(client);
 
-        await client.query("COMMIT");
+        await client.query(
+            "COMMIT"
+        );
 
         return result;
 
@@ -247,6 +285,20 @@ async function initDatabase() {
             );
         `);
 
+        // ====================================
+        // WELCOME DM SETTINGS
+        // ====================================
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS welcome_dm_settings (
+                guild_id TEXT PRIMARY KEY,
+                message TEXT NOT NULL,
+                image_url TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+        `);
+
         databaseReady = true;
 
         console.log(
@@ -255,6 +307,10 @@ async function initDatabase() {
 
         console.log(
             "✅ Existing auto-category messages were preserved."
+        );
+
+        console.log(
+            "✅ Welcome-DM settings table is ready."
         );
 
         return true;
@@ -492,8 +548,6 @@ async function findBlockedWord(
                 blockedWord
             );
 
-        // Strict whole-word matching prevents
-        // "ass" from matching "class" or "grass".
         const expression =
             new RegExp(
                 `(?<![\\p{L}\\p{N}_])${escapedWord}(?![\\p{L}\\p{N}_])`,
@@ -659,7 +713,7 @@ async function unauthorizeUser(
 }
 
 // ========================================
-// IS AUTHORIZED USER
+// CHECK AUTHORIZED USER
 // ========================================
 
 async function isAuthorizedUser(
@@ -705,7 +759,7 @@ async function isAuthorizedUser(
 }
 
 // ========================================
-// IS UNAUTHORIZED USER
+// CHECK UNAUTHORIZED USER
 // ========================================
 
 async function isUnauthorizedUser(
@@ -967,7 +1021,7 @@ async function unauthorizeRole(
 }
 
 // ========================================
-// IS AUTHORIZED ROLE
+// CHECK AUTHORIZED ROLE
 // ========================================
 
 async function isAuthorizedRole(
@@ -1013,7 +1067,7 @@ async function isAuthorizedRole(
 }
 
 // ========================================
-// IS UNAUTHORIZED ROLE
+// CHECK UNAUTHORIZED ROLE
 // ========================================
 
 async function isUnauthorizedRole(
@@ -1129,7 +1183,7 @@ async function getUnauthorizedRoles(guild) {
 }
 
 // ========================================
-// SET AUTO CATEGORY MESSAGE
+// SET AUTO-CATEGORY MESSAGE
 // ========================================
 
 async function setAutoCategoryMessage(
@@ -1199,7 +1253,7 @@ async function setAutoCategoryMessage(
 }
 
 // ========================================
-// REMOVE AUTO CATEGORY MESSAGE
+// REMOVE AUTO-CATEGORY MESSAGE
 // ========================================
 
 async function removeAutoCategoryMessage(
@@ -1241,7 +1295,7 @@ async function removeAutoCategoryMessage(
 }
 
 // ========================================
-// GET AUTO CATEGORY MESSAGE
+// GET AUTO-CATEGORY MESSAGE
 // ========================================
 
 async function getAutoCategoryMessage(
@@ -1288,7 +1342,7 @@ async function getAutoCategoryMessage(
 }
 
 // ========================================
-// GET ALL AUTO CATEGORY MESSAGES
+// GET ALL AUTO-CATEGORY MESSAGES
 // ========================================
 
 async function getAutoCategoryMessages(guild) {
@@ -1452,6 +1506,177 @@ async function getBanTriggerChannel(guild) {
 }
 
 // ========================================
+// SET WELCOME DM
+// ========================================
+
+async function setWelcomeDm(
+    guild,
+    message,
+    imageUrl = null
+) {
+    requireDatabase();
+
+    const serverId =
+        getServerId(guild);
+
+    const cleanMessage =
+        cleanText(message);
+
+    const providedImageUrl =
+        cleanText(imageUrl);
+
+    const cleanUrl =
+        providedImageUrl
+            ? cleanImageUrl(
+                providedImageUrl
+            )
+            : null;
+
+    if (
+        !serverId ||
+        !cleanMessage ||
+        cleanMessage.length > 2000
+    ) {
+        return false;
+    }
+
+    // An image URL was supplied but was invalid.
+    if (
+        providedImageUrl &&
+        !cleanUrl
+    ) {
+        return false;
+    }
+
+    const result =
+        await pool.query(
+            `
+            INSERT INTO welcome_dm_settings (
+                guild_id,
+                message,
+                image_url,
+                updated_at
+            )
+
+            VALUES (
+                $1,
+                $2,
+                $3,
+                NOW()
+            )
+
+            ON CONFLICT (
+                guild_id
+            )
+
+            DO UPDATE SET
+                message =
+                    EXCLUDED.message,
+
+                image_url =
+                    EXCLUDED.image_url,
+
+                updated_at =
+                    NOW()
+
+            RETURNING guild_id;
+            `,
+            [
+                serverId,
+                cleanMessage,
+                cleanUrl
+            ]
+        );
+
+    return result.rowCount > 0;
+}
+
+// ========================================
+// REMOVE WELCOME DM
+// ========================================
+
+async function removeWelcomeDm(guild) {
+    requireDatabase();
+
+    const serverId =
+        getServerId(guild);
+
+    if (!serverId) {
+        return false;
+    }
+
+    const result =
+        await pool.query(
+            `
+            DELETE FROM welcome_dm_settings
+
+            WHERE guild_id = $1
+
+            RETURNING guild_id;
+            `,
+            [
+                serverId
+            ]
+        );
+
+    return result.rowCount > 0;
+}
+
+// ========================================
+// GET WELCOME DM
+// ========================================
+
+async function getWelcomeDm(guild) {
+    requireDatabase();
+
+    const serverId =
+        getServerId(guild);
+
+    if (!serverId) {
+        return null;
+    }
+
+    const result =
+        await pool.query(
+            `
+            SELECT
+                message,
+                image_url,
+                created_at,
+                updated_at
+
+            FROM welcome_dm_settings
+
+            WHERE guild_id = $1
+
+            LIMIT 1;
+            `,
+            [
+                serverId
+            ]
+        );
+
+    if (result.rowCount === 0) {
+        return null;
+    }
+
+    return {
+        message:
+            result.rows[0].message,
+
+        imageUrl:
+            result.rows[0].image_url ??
+            null,
+
+        createdAt:
+            result.rows[0].created_at,
+
+        updatedAt:
+            result.rows[0].updated_at
+    };
+}
+
+// ========================================
 // DATABASE ERROR HANDLER
 // ========================================
 
@@ -1507,6 +1732,7 @@ module.exports = {
     // Helpers
     getServerId,
     normalizeForWordFilter,
+    cleanImageUrl,
 
     // Blocked words
     addBlockedWord,
@@ -1539,5 +1765,10 @@ module.exports = {
     // Ban-trigger channel
     setBanTriggerChannel,
     removeBanTriggerChannel,
-    getBanTriggerChannel
+    getBanTriggerChannel,
+
+    // Welcome DM
+    setWelcomeDm,
+    removeWelcomeDm,
+    getWelcomeDm
 };
