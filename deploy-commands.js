@@ -233,6 +233,28 @@ const commands = [
         ),
 
     // ====================================
+    // NEW-MEMBER WELCOME DIRECT MESSAGE
+    // ====================================
+
+    new SlashCommandBuilder()
+        .setName("welcome-dm-set")
+        .setDescription(
+            "Set the direct message sent to new members after one minute."
+        ),
+
+    new SlashCommandBuilder()
+        .setName("welcome-dm-remove")
+        .setDescription(
+            "Disable the new-member welcome direct message."
+        ),
+
+    new SlashCommandBuilder()
+        .setName("welcome-dm-status")
+        .setDescription(
+            "Show the current new-member welcome DM settings."
+        ),
+    
+    // ====================================
     // BAN-TRIGGER CHANNEL
     // ====================================
 
