@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node index.js",
     "deploy": "node deploy-commands.js",
-    "check": "node --check index.js && node --check antiRaid.js && node --check database.js && node --check config.js && node --check deploy-commands.js"
+    "check": "node --check index.js && node --check antiRaid.js && node --check database.js && node --check config.js && node --check deploy-commands.js",
+    "build": "npm run check && npm run deploy"
   },
   "engines": {
     "node": ">=20.0.0"
