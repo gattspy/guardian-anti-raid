@@ -1014,6 +1014,134 @@ async function getBanTriggerChannel(
 }
 
 // ========================================
+// WELCOME DIRECT MESSAGE
+// ========================================
+
+async function setWelcomeDm(
+    guild,
+    message,
+    imageUrl = null
+) {
+    const serverId =
+        getServerId(guild);
+
+    const cleanMessage =
+        typeof message === "string"
+            ? message.trim()
+            : "";
+
+    const cleanImageUrl =
+        typeof imageUrl === "string"
+            ? imageUrl.trim()
+            : "";
+
+    const maximumMessageLength =
+        config.welcomeDmMaxLength ??
+        2000;
+
+    const maximumImageUrlLength =
+        config.welcomeDmImageUrlMaxLength ??
+        2048;
+
+    if (
+        !serverId ||
+        !cleanMessage ||
+        cleanMessage.length >
+            maximumMessageLength
+    ) {
+        return false;
+    }
+
+    if (
+        cleanImageUrl.length >
+        maximumImageUrlLength
+    ) {
+        return false;
+    }
+
+    if (cleanImageUrl) {
+        try {
+            const parsedUrl =
+                new URL(
+                    cleanImageUrl
+                );
+
+            if (
+                parsedUrl.protocol !== "https:" &&
+                parsedUrl.protocol !== "http:"
+            ) {
+                return false;
+            }
+
+        } catch {
+            return false;
+        }
+    }
+
+    return database.setWelcomeDm(
+        serverId,
+        cleanMessage,
+        cleanImageUrl || null
+    );
+}
+
+async function removeWelcomeDm(guild) {
+    const serverId =
+        getServerId(guild);
+
+    if (!serverId) {
+        return false;
+    }
+
+    return database.removeWelcomeDm(
+        serverId
+    );
+}
+
+async function getWelcomeDm(guild) {
+    const serverId =
+        getServerId(guild);
+
+    if (!serverId) {
+        return null;
+    }
+
+    const setting =
+        await database.getWelcomeDm(
+            serverId
+        );
+
+    if (
+        !setting ||
+        typeof setting.message !==
+            "string" ||
+        !setting.message.trim()
+    ) {
+        return null;
+    }
+
+    return {
+        message:
+            setting.message.trim(),
+
+        imageUrl:
+            typeof setting.imageUrl ===
+                "string" &&
+            setting.imageUrl.trim()
+                ? setting.imageUrl.trim()
+                : null,
+
+        createdAt:
+            setting.createdAt ??
+            null,
+
+        updatedAt:
+            setting.updatedAt ??
+            null
+    };
+}
+
+// ========================================
 // IMAGE ATTACHMENT CHECK
 // ========================================
 
@@ -1370,6 +1498,11 @@ module.exports = {
     setBanTriggerChannel,
     removeBanTriggerChannel,
     getBanTriggerChannel,
+
+    // WELCOME DIRECT MESSAGE
+    setWelcomeDm,
+    removeWelcomeDm,
+    getWelcomeDm,
 
     // IMAGE-SPAM PROTECTION
     checkImageSpam
