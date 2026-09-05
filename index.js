@@ -425,6 +425,15 @@ client.once(
 // WELCOME DM TIMER HELPERS
 // ========================================
 
+const welcomeDmTimers =
+    new Map();
+
+const autoMessageJobs =
+    new Map();
+
+const autoMessageSent =
+    new Set();
+
 function getWelcomeTimerKey(
     guildId,
     userId
@@ -827,84 +836,211 @@ client.on(
 // AUTOMATIC CATEGORY MESSAGES
 // ========================================
 
+async function handleAutoCategoryMessage(
+    createdChannel
+) {
+    try {
+        if (
+            createdChannel?.id &&
+            autoMessageJobs.has(
+                createdChannel.id
+            )
+        ) {
+            autoMessageJobs.set(
+                createdChannel.id,
+                "rerun"
+            );
+
+            return;
+        }
+
+        if (
+            !databaseReady ||
+            !createdChannel?.guild ||
+            !createdChannel.id ||
+            autoMessageSent.has(
+                createdChannel.id
+            )
+        ) {
+            return;
+        }
+
+        autoMessageJobs.set(
+            createdChannel.id,
+            true
+        );
+
+        // Ticket bots may need time to assign
+        // the category and channel permissions.
+        await wait(
+            3000
+        );
+
+        const channel =
+            await createdChannel.guild
+                .channels
+                .fetch(
+                    createdChannel.id
+                )
+                .catch(
+                    () => null
+                );
+
+        if (!channel) {
+            return;
+        }
+
+        console.log(
+            `[AUTO MESSAGE CHECK] Channel: ${channel.name}, ` +
+            `Parent: ${channel.parentId ?? "none"}, ` +
+            `Type: ${channel.type}`
+        );
+
+        if (
+            !channel.parentId ||
+            !channel.isTextBased?.() ||
+            typeof channel.send !==
+                "function"
+        ) {
+            return;
+        }
+
+        const savedMessage =
+            await getAutoCategoryMessage(
+                channel.guild,
+                channel.parentId
+            );
+
+        if (!savedMessage) {
+            console.log(
+                `[AUTO MESSAGE] No message configured for category ` +
+                `${channel.parentId} in ${channel.guild.name}.`
+            );
+
+            return;
+        }
+
+        const botMember =
+            channel.guild.members.me;
+
+        const permissions =
+            botMember
+                ? channel.permissionsFor(
+                    botMember
+                )
+                : null;
+
+        if (
+            !permissions?.has(
+                PermissionFlagsBits.ViewChannel
+            ) ||
+            !permissions?.has(
+                PermissionFlagsBits.SendMessages
+            )
+        ) {
+            console.warn(
+                `[AUTO MESSAGE] Guardian cannot view or send in ` +
+                `#${channel.name} (${channel.guild.name}).`
+            );
+
+            return;
+        }
+
+        await channel.send({
+            content:
+                savedMessage,
+
+            allowedMentions: {
+                parse: []
+            }
+        });
+
+        autoMessageSent.add(
+            channel.id
+        );
+
+        console.log(
+            `[AUTO MESSAGE] ✅ Sent in #${channel.name} ` +
+            `(${channel.guild.name})`
+        );
+
+    } catch (error) {
+        console.error(
+            "❌ Automatic category message error:",
+            error
+        );
+
+    } finally {
+        if (createdChannel?.id) {
+            const shouldRerun =
+                autoMessageJobs.get(
+                    createdChannel.id
+                ) === "rerun";
+
+            autoMessageJobs.delete(
+                createdChannel.id
+            );
+
+            if (shouldRerun) {
+                setTimeout(
+                    () => {
+                        handleAutoCategoryMessage(
+                            createdChannel
+                        );
+                    },
+                    1000
+                );
+            }
+        }
+    }
+}
+
+// Handles channels that are created directly
+// inside the configured category.
 client.on(
     "channelCreate",
-    async createdChannel => {
-        try {
-            if (
-                !databaseReady ||
-                !createdChannel?.guild ||
-                !createdChannel.id
-            ) {
-                return;
-            }
+    createdChannel => {
+        handleAutoCategoryMessage(
+            createdChannel
+        );
+    }
+);
 
-            // Wait for Discord to finish creating
-            // the channel and applying permissions.
-            await wait(
-                1000
-            );
-
-            const channel =
-                await createdChannel.guild
-                    .channels
-                    .fetch(
-                        createdChannel.id
-                    )
-                    .catch(
-                        () => null
-                    );
-
-            if (
-                !channel ||
-                !channel.parentId ||
-                !channel.isTextBased?.() ||
-                typeof channel.send !==
-                    "function"
-            ) {
-                return;
-            }
-
-            const savedMessage =
-                await getAutoCategoryMessage(
-                    channel.guild,
-                    channel.parentId
-                );
-
-            if (!savedMessage) {
-                console.log(
-                    `[AUTO MESSAGE] No message configured for category ${channel.parentId} in ${channel.guild.name}.`
-                );
-
-                return;
-            }
-
-            await channel.send({
-                content:
-                    savedMessage,
-
-                allowedMentions: {
-                    parse: []
-                }
-            });
-
-            console.log(
-                `[AUTO MESSAGE] ✅ Sent in #${channel.name} (${channel.guild.name})`
-            );
-
-        } catch (error) {
-            console.error(
-                "❌ Automatic category message error:",
-                error
-            );
-
-            console.error(
-                "Guardian needs View Channel and Send Messages permissions in the new channel."
+// Handles ticket bots that assign the category
+// or permissions after creating the channel.
+client.on(
+    "channelUpdate",
+    (
+        oldChannel,
+        newChannel
+    ) => {
+        if (
+            oldChannel?.parentId !==
+                newChannel?.parentId ||
+            !autoMessageSent.has(
+                newChannel?.id
+            )
+        ) {
+            handleAutoCategoryMessage(
+                newChannel
             );
         }
     }
 );
 
+// Remove temporary tracking when a ticket closes.
+client.on(
+    "channelDelete",
+    deletedChannel => {
+        autoMessageJobs.delete(
+            deletedChannel.id
+        );
+
+        autoMessageSent.delete(
+            deletedChannel.id
+        );
+    }
+);
 // ========================================
 // BLOCKED-WORD MODERATION
 // ========================================
