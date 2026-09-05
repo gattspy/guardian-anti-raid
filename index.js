@@ -425,9 +425,6 @@ client.once(
 // WELCOME DM TIMER HELPERS
 // ========================================
 
-const welcomeDmTimers =
-    new Map();
-
 const autoMessageJobs =
     new Map();
 
@@ -2473,6 +2470,9 @@ async function shutdown(
         }
 
         welcomeDmTimers.clear();
+
+        autoMessageJobs.clear();
+        autoMessageSent.clear();
 
         client.destroy();
 
