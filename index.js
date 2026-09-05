@@ -72,14 +72,9 @@ if (!process.env.DATABASE_URL) {
     process.exit(1);
 }
 
-// CLIENT_ID is only required inside
-// deploy-commands.js.
-
 let databaseReady = false;
 let shuttingDown = false;
 
-// Stores temporary one-minute DM timers.
-// Each server and member gets a unique timer.
 const welcomeDmTimers =
     new Map();
 
@@ -90,9 +85,8 @@ const welcomeDmTimers =
 const app = express();
 
 const PORT =
-    Number(
-        process.env.PORT
-    ) || 10000;
+    Number(process.env.PORT) ||
+    10000;
 
 // ========================================
 // DISCORD CLIENT
@@ -174,7 +168,40 @@ app.listen(
 );
 
 // ========================================
-// SAFE INTERACTION REPLY
+// BASIC HELPERS
+// ========================================
+
+function wait(milliseconds) {
+    return new Promise(
+        resolve =>
+            setTimeout(
+                resolve,
+                milliseconds
+            )
+    );
+}
+
+function truncate(
+    text,
+    maximum = 1900
+) {
+    if (
+        text.length <= maximum
+    ) {
+        return text;
+    }
+
+    return (
+        text.slice(
+            0,
+            maximum - 25
+        ) +
+        "\n\n...list truncated."
+    );
+}
+
+// ========================================
+// INTERACTION HELPERS
 // ========================================
 
 async function safeReply(
@@ -238,10 +265,6 @@ async function safeReply(
     }
 }
 
-// ========================================
-// DEFER INTERACTION
-// ========================================
-
 async function deferInteraction(
     interaction
 ) {
@@ -287,13 +310,12 @@ function isAdministrator(
 async function getInteractionMember(
     interaction
 ) {
-    const cachedMember =
-        interaction.member;
-
     if (
-        cachedMember?.roles?.cache
+        interaction.member
+            ?.roles
+            ?.cache
     ) {
-        return cachedMember;
+        return interaction.member;
     }
 
     return interaction.guild
@@ -332,25 +354,6 @@ async function guardianAccessAllowed(
 
         return false;
     }
-}
-
-function truncate(
-    text,
-    maximum = 1900
-) {
-    if (
-        text.length <= maximum
-    ) {
-        return text;
-    }
-
-    return (
-        text.slice(
-            0,
-            maximum - 25
-        ) +
-        "\n\n...list truncated."
-    );
 }
 
 // ========================================
@@ -429,13 +432,43 @@ function getWelcomeTimerKey(
     return `${guildId}:${userId}`;
 }
 
-function scheduleWelcomeDm(member) {
+async function scheduleWelcomeDm(
+    member
+) {
     if (
         !member?.guild?.id ||
         !member?.id ||
         member.user?.bot
     ) {
-        return;
+        return false;
+    }
+
+    // Check whether this server has a saved
+    // welcome message before creating a timer.
+    try {
+        const initialSetting =
+            await getWelcomeDm(
+                member.guild
+            );
+
+        if (
+            !initialSetting ||
+            !initialSetting.message
+        ) {
+            console.log(
+                `[WELCOME DM] No welcome DM configured for ${member.guild.name}.`
+            );
+
+            return false;
+        }
+
+    } catch (error) {
+        console.error(
+            `[WELCOME DM] Could not check settings for ${member.guild.name}:`,
+            error
+        );
+
+        return false;
     }
 
     const guildId =
@@ -491,7 +524,7 @@ function scheduleWelcomeDm(member) {
                         return;
                     }
 
-                    // Force-fetch the member to confirm
+                    // Force-fetch the member to verify
                     // they are still in the server.
                     const currentMember =
                         await guild.members
@@ -507,9 +540,14 @@ function scheduleWelcomeDm(member) {
                             );
 
                     if (!currentMember) {
+                        console.log(
+                            `[WELCOME DM] Member ${userId} left ${guild.name} before delivery.`
+                        );
+
                         return;
                     }
 
+                    // Read the newest saved message.
                     const setting =
                         await getWelcomeDm(
                             guild
@@ -519,10 +557,14 @@ function scheduleWelcomeDm(member) {
                         !setting ||
                         !setting.message
                     ) {
+                        console.log(
+                            `[WELCOME DM] Setting was removed before delivery in ${guild.name}.`
+                        );
+
                         return;
                     }
 
-                    const payload = {
+                    const directMessage = {
                         content:
                             setting.message,
 
@@ -532,7 +574,7 @@ function scheduleWelcomeDm(member) {
                     };
 
                     if (setting.imageUrl) {
-                        payload.embeds = [
+                        directMessage.embeds = [
                             new EmbedBuilder()
                                 .setColor(
                                     0x5865F2
@@ -544,20 +586,22 @@ function scheduleWelcomeDm(member) {
                     }
 
                     await currentMember.send(
-                        payload
+                        directMessage
                     );
 
                     console.log(
-                        `[WELCOME DM] Sent to ${currentMember.user.tag} from ${guild.name}`
+                        `[WELCOME DM] ✅ Sent to ${currentMember.user.tag} from ${guild.name}.`
                     );
 
                 } catch (error) {
-                    // This commonly occurs when the
-                    // member has direct messages disabled.
                     console.warn(
                         `[WELCOME DM] Could not DM ${userId} in ${guildId}:`,
                         error?.message ??
                         error
+                    );
+
+                    console.warn(
+                        "The member may have server direct messages disabled."
                     );
                 }
             },
@@ -568,6 +612,14 @@ function scheduleWelcomeDm(member) {
         timerKey,
         timer
     );
+
+    console.log(
+        `[WELCOME DM] Scheduled for ${member.user.tag} in ${Math.round(
+            delay / 1000
+        )} seconds.`
+    );
+
+    return true;
 }
 
 // ========================================
@@ -590,7 +642,7 @@ client.on(
                 `[JOIN] ${member.user.tag} joined ${member.guild.name}`
             );
 
-            // Whitelisted members bypass
+            // Whitelisted users bypass account
             // protection but still receive the DM.
             if (
                 isWhitelisted(
@@ -601,15 +653,15 @@ client.on(
                     `[WHITELIST] ${member.user.tag} bypassed new-account protection.`
                 );
 
-                scheduleWelcomeDm(
+                await scheduleWelcomeDm(
                     member
                 );
 
                 return;
             }
 
-            // Suspicious accounts are kicked
-            // and therefore do not receive a DM.
+            // Accounts under 24 hours old are kicked,
+            // so they do not receive a welcome DM.
             if (
                 config.kickNewAccounts &&
                 isSuspiciousAccount(
@@ -624,7 +676,7 @@ client.on(
                 return;
             }
 
-            scheduleWelcomeDm(
+            await scheduleWelcomeDm(
                 member
             );
 
@@ -777,45 +829,77 @@ client.on(
 
 client.on(
     "channelCreate",
-    async channel => {
+    async createdChannel => {
         try {
             if (
                 !databaseReady ||
-                !channel?.guild ||
-                !channel.parentId ||
-                !channel.isTextBased?.() ||
-                channel.type ===
-                    ChannelType.GuildCategory
+                !createdChannel?.guild ||
+                !createdChannel.id
             ) {
                 return;
             }
 
-            const message =
-                await getAutoCategoryMessage(
-                    channel.guild,
-                    channel.parentId
-                );
+            // Wait for Discord to finish creating
+            // the channel and applying permissions.
+            await wait(
+                1000
+            );
+
+            const channel =
+                await createdChannel.guild
+                    .channels
+                    .fetch(
+                        createdChannel.id
+                    )
+                    .catch(
+                        () => null
+                    );
 
             if (
-                !message ||
+                !channel ||
+                !channel.parentId ||
+                !channel.isTextBased?.() ||
                 typeof channel.send !==
                     "function"
             ) {
                 return;
             }
 
-            await channel.send(
-                message
-            );
+            const savedMessage =
+                await getAutoCategoryMessage(
+                    channel.guild,
+                    channel.parentId
+                );
+
+            if (!savedMessage) {
+                console.log(
+                    `[AUTO MESSAGE] No message configured for category ${channel.parentId} in ${channel.guild.name}.`
+                );
+
+                return;
+            }
+
+            await channel.send({
+                content:
+                    savedMessage,
+
+                allowedMentions: {
+                    parse: []
+                }
+            });
 
             console.log(
-                `[AUTO MESSAGE] Sent in #${channel.name} (${channel.guild.name})`
+                `[AUTO MESSAGE] ✅ Sent in #${channel.name} (${channel.guild.name})`
             );
 
         } catch (error) {
             console.error(
                 "❌ Automatic category message error:",
                 error
+            );
+
+            console.error(
+                "Guardian needs View Channel and Send Messages permissions in the new channel."
             );
         }
     }
@@ -1284,10 +1368,6 @@ async function handleAdminCommand(
     interaction,
     command
 ) {
-    // ====================================
-    // REMOVE WELCOME DM
-    // ====================================
-
     if (
         command ===
         "welcome-dm-remove"
@@ -1306,10 +1386,6 @@ async function handleAdminCommand(
 
         return true;
     }
-
-    // ====================================
-    // WELCOME DM STATUS
-    // ====================================
 
     if (
         command ===
@@ -1353,10 +1429,6 @@ async function handleAdminCommand(
 
         return true;
     }
-
-    // ====================================
-    // USER AUTHORIZATION
-    // ====================================
 
     if (
         command === "authorize" ||
@@ -1403,10 +1475,6 @@ async function handleAdminCommand(
         return true;
     }
 
-    // ====================================
-    // ROLE AUTHORIZATION
-    // ====================================
-
     if (
         command === "authorize-role" ||
         command === "unauthorize-role"
@@ -1452,10 +1520,6 @@ async function handleAdminCommand(
 
         return true;
     }
-
-    // ====================================
-    // AUTHORIZATION LISTS
-    // ====================================
 
     if (
         command === "authorized-list" ||
@@ -1519,10 +1583,6 @@ async function handleAdminCommand(
         return true;
     }
 
-    // ====================================
-    // SET BAN CHANNEL
-    // ====================================
-
     if (
         command ===
         "ban-channel-set"
@@ -1562,10 +1622,6 @@ async function handleAdminCommand(
         return true;
     }
 
-    // ====================================
-    // REMOVE BAN CHANNEL
-    // ====================================
-
     if (
         command ===
         "ban-channel-remove"
@@ -1584,10 +1640,6 @@ async function handleAdminCommand(
 
         return true;
     }
-
-    // ====================================
-    // BAN CHANNEL STATUS
-    // ====================================
 
     if (
         command ===
@@ -1644,10 +1696,6 @@ async function handleGuardianCommand(
     interaction,
     command
 ) {
-    // ====================================
-    // LOCKDOWN
-    // ====================================
-
     if (
         command ===
         "lockdown"
@@ -1668,10 +1716,6 @@ async function handleGuardianCommand(
         return true;
     }
 
-    // ====================================
-    // UNLOCK
-    // ====================================
-
     if (
         command ===
         "unlock"
@@ -1691,10 +1735,6 @@ async function handleGuardianCommand(
         return true;
     }
 
-    // ====================================
-    // RAID STATUS
-    // ====================================
-
     if (
         command ===
         "raidstatus"
@@ -1710,10 +1750,6 @@ async function handleGuardianCommand(
 
         return true;
     }
-
-    // ====================================
-    // ADD OR REMOVE BLOCKED WORD
-    // ====================================
 
     if (
         command === "word-add" ||
@@ -1769,10 +1805,6 @@ async function handleGuardianCommand(
         return true;
     }
 
-    // ====================================
-    // BLOCKED-WORD LIST
-    // ====================================
-
     if (
         command ===
         "word-list"
@@ -1801,10 +1833,6 @@ async function handleGuardianCommand(
 
         return true;
     }
-
-    // ====================================
-    // REMOVE AUTOMESSAGE
-    // ====================================
 
     if (
         command ===
@@ -1844,10 +1872,6 @@ async function handleGuardianCommand(
 
         return true;
     }
-
-    // ====================================
-    // AUTOMESSAGE LIST
-    // ====================================
 
     if (
         command ===
@@ -1928,10 +1952,6 @@ client.on(
     "interactionCreate",
     async interaction => {
         try {
-            // ====================================
-            // MODAL SUBMISSIONS
-            // ====================================
-
             if (
                 interaction.isModalSubmit()
             ) {
@@ -2240,7 +2260,7 @@ client.on(
 );
 
 // ========================================
-// DISCORD ERROR HANDLERS
+// ERROR HANDLERS
 // ========================================
 
 client.on(
@@ -2262,10 +2282,6 @@ client.on(
         );
     }
 );
-
-// ========================================
-// NODE ERROR HANDLERS
-// ========================================
 
 process.on(
     "unhandledRejection",
