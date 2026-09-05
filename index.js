@@ -884,6 +884,10 @@ async function handleAutoCategoryMessage(
                 );
 
         if (!channel) {
+            console.warn(
+                `[AUTO MESSAGE] Could not fetch channel ${createdChannel.id}.`
+            );
+
             return;
         }
 
@@ -894,24 +898,57 @@ async function handleAutoCategoryMessage(
         );
 
         if (
-            !channel.parentId ||
             !channel.isTextBased?.() ||
             typeof channel.send !==
                 "function"
         ) {
+            console.warn(
+                `[AUTO MESSAGE] ${channel.name ?? channel.id} ` +
+                "is not a sendable text channel."
+            );
+
+            return;
+        }
+
+        // For a normal ticket channel, parentId is the category.
+        // For a ticket thread, the thread's parent belongs to
+        // the configured category.
+        const parentChannel =
+            channel.parent ??
+            (
+                channel.parentId
+                    ? await channel.guild.channels
+                        .fetch(channel.parentId)
+                        .catch(() => null)
+                    : null
+            );
+
+        const categoryId =
+            parentChannel?.type ===
+                ChannelType.GuildCategory
+                ? parentChannel.id
+                : parentChannel?.parentId ??
+                    null;
+
+        if (!categoryId) {
+            console.warn(
+                `[AUTO MESSAGE] No category found for ` +
+                `${channel.name ?? channel.id}.`
+            );
+
             return;
         }
 
         const savedMessage =
             await getAutoCategoryMessage(
                 channel.guild,
-                channel.parentId
+                categoryId
             );
 
         if (!savedMessage) {
             console.log(
                 `[AUTO MESSAGE] No message configured for category ` +
-                `${channel.parentId} in ${channel.guild.name}.`
+                `${categoryId} in ${channel.guild.name}.`
             );
 
             return;
@@ -927,12 +964,17 @@ async function handleAutoCategoryMessage(
                 )
                 : null;
 
+        const sendPermission =
+            channel.isThread?.()
+                ? PermissionFlagsBits.SendMessagesInThreads
+                : PermissionFlagsBits.SendMessages;
+
         if (
             !permissions?.has(
                 PermissionFlagsBits.ViewChannel
             ) ||
             !permissions?.has(
-                PermissionFlagsBits.SendMessages
+                sendPermission
             )
         ) {
             console.warn(
@@ -997,6 +1039,12 @@ async function handleAutoCategoryMessage(
 client.on(
     "channelCreate",
     createdChannel => {
+        console.log(
+            `[CHANNEL CREATE] ${createdChannel.name ?? createdChannel.id}; ` +
+            `type=${createdChannel.type}; ` +
+            `parent=${createdChannel.parentId ?? "none"}`
+        );
+
         handleAutoCategoryMessage(
             createdChannel
         );
@@ -1011,6 +1059,12 @@ client.on(
         oldChannel,
         newChannel
     ) => {
+        console.log(
+            `[CHANNEL UPDATE] ${newChannel.name ?? newChannel.id}; ` +
+            `old parent=${oldChannel?.parentId ?? "none"}; ` +
+            `new parent=${newChannel?.parentId ?? "none"}`
+        );
+
         if (
             oldChannel?.parentId !==
                 newChannel?.parentId ||
@@ -1022,6 +1076,22 @@ client.on(
                 newChannel
             );
         }
+    }
+);
+
+// Some ticket systems create a private or public thread
+// instead of creating a normal text channel.
+client.on(
+    "threadCreate",
+    thread => {
+        console.log(
+            `[THREAD CREATE] ${thread.name ?? thread.id}; ` +
+            `parent=${thread.parentId ?? "none"}`
+        );
+
+        handleAutoCategoryMessage(
+            thread
+        );
     }
 );
 
