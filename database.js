@@ -196,6 +196,10 @@ async function initDatabase() {
         // Existing records are preserved because
         // every statement uses IF NOT EXISTS.
 
+        // ====================================
+        // BLOCKED WORDS
+        // ====================================
+
         await client.query(`
             CREATE TABLE IF NOT EXISTS blocked_words (
                 guild_id TEXT NOT NULL,
@@ -208,6 +212,10 @@ async function initDatabase() {
                 )
             );
         `);
+
+        // ====================================
+        // AUTHORIZED USERS
+        // ====================================
 
         await client.query(`
             CREATE TABLE IF NOT EXISTS authorized_users (
@@ -222,6 +230,10 @@ async function initDatabase() {
             );
         `);
 
+        // ====================================
+        // UNAUTHORIZED USERS
+        // ====================================
+
         await client.query(`
             CREATE TABLE IF NOT EXISTS unauthorized_users (
                 guild_id TEXT NOT NULL,
@@ -234,6 +246,10 @@ async function initDatabase() {
                 )
             );
         `);
+
+        // ====================================
+        // AUTHORIZED ROLES
+        // ====================================
 
         await client.query(`
             CREATE TABLE IF NOT EXISTS authorized_roles (
@@ -248,6 +264,10 @@ async function initDatabase() {
             );
         `);
 
+        // ====================================
+        // UNAUTHORIZED ROLES
+        // ====================================
+
         await client.query(`
             CREATE TABLE IF NOT EXISTS unauthorized_roles (
                 guild_id TEXT NOT NULL,
@@ -260,6 +280,10 @@ async function initDatabase() {
                 )
             );
         `);
+
+        // ====================================
+        // AUTOMATIC CATEGORY MESSAGES
+        // ====================================
 
         await client.query(`
             CREATE TABLE IF NOT EXISTS auto_category_messages (
@@ -275,6 +299,10 @@ async function initDatabase() {
                 )
             );
         `);
+
+        // ====================================
+        // BAN-TRIGGER CHANNELS
+        // ====================================
 
         await client.query(`
             CREATE TABLE IF NOT EXISTS ban_trigger_channels (
@@ -299,10 +327,33 @@ async function initDatabase() {
             );
         `);
 
+        // ====================================
+        // MESSAGE LENGTH SETTINGS
+        // ====================================
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS message_length_settings (
+                guild_id TEXT PRIMARY KEY,
+
+                allow_long_messages
+                    BOOLEAN NOT NULL DEFAULT FALSE,
+
+                created_at
+                    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+                updated_at
+                    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+        `);
+
         databaseReady = true;
 
         console.log(
             "✅ PostgreSQL tables are ready."
+        );
+
+        console.log(
+            "✅ Existing blocked words and authorization lists were preserved."
         );
 
         console.log(
@@ -311,6 +362,10 @@ async function initDatabase() {
 
         console.log(
             "✅ Welcome-DM settings table is ready."
+        );
+
+        console.log(
+            "✅ Message-length settings table is ready."
         );
 
         return true;
@@ -1345,7 +1400,9 @@ async function getAutoCategoryMessage(
 // GET ALL AUTO-CATEGORY MESSAGES
 // ========================================
 
-async function getAutoCategoryMessages(guild) {
+async function getAutoCategoryMessages(
+    guild
+) {
     requireDatabase();
 
     const serverId =
@@ -1442,7 +1499,9 @@ async function setBanTriggerChannel(
 // REMOVE BAN-TRIGGER CHANNEL
 // ========================================
 
-async function removeBanTriggerChannel(guild) {
+async function removeBanTriggerChannel(
+    guild
+) {
     requireDatabase();
 
     const serverId =
@@ -1473,7 +1532,9 @@ async function removeBanTriggerChannel(guild) {
 // GET BAN-TRIGGER CHANNEL
 // ========================================
 
-async function getBanTriggerChannel(guild) {
+async function getBanTriggerChannel(
+    guild
+) {
     requireDatabase();
 
     const serverId =
@@ -1540,7 +1601,6 @@ async function setWelcomeDm(
         return false;
     }
 
-    // An image URL was supplied but was invalid.
     if (
         providedImageUrl &&
         !cleanUrl
@@ -1677,12 +1737,116 @@ async function getWelcomeDm(guild) {
 }
 
 // ========================================
+// SET LONG-MESSAGE PERMISSION
+// ========================================
+
+async function setLongMessagesAllowed(
+    guild,
+    allowed
+) {
+    requireDatabase();
+
+    const serverId =
+        getServerId(guild);
+
+    if (!serverId) {
+        return false;
+    }
+
+    const allowLongMessages =
+        allowed === true;
+
+    const result =
+        await pool.query(
+            `
+            INSERT INTO message_length_settings (
+                guild_id,
+                allow_long_messages,
+                updated_at
+            )
+
+            VALUES (
+                $1,
+                $2,
+                NOW()
+            )
+
+            ON CONFLICT (
+                guild_id
+            )
+
+            DO UPDATE SET
+                allow_long_messages =
+                    EXCLUDED.allow_long_messages,
+
+                updated_at =
+                    NOW()
+
+            RETURNING allow_long_messages;
+            `,
+            [
+                serverId,
+                allowLongMessages
+            ]
+        );
+
+    return result.rowCount > 0;
+}
+
+// ========================================
+// GET LONG-MESSAGE PERMISSION
+// ========================================
+
+async function getLongMessagesAllowed(
+    guild
+) {
+    requireDatabase();
+
+    const serverId =
+        getServerId(guild);
+
+    if (!serverId) {
+        return false;
+    }
+
+    const result =
+        await pool.query(
+            `
+            SELECT allow_long_messages
+
+            FROM message_length_settings
+
+            WHERE guild_id = $1
+
+            LIMIT 1;
+            `,
+            [
+                serverId
+            ]
+        );
+
+    // If the server has no saved setting,
+    // long messages remain restricted.
+    if (result.rowCount === 0) {
+        return false;
+    }
+
+    return (
+        result.rows[0]
+            .allow_long_messages ===
+        true
+    );
+}
+
+// ========================================
 // DATABASE ERROR HANDLER
 // ========================================
 
 pool.on(
     "error",
     error => {
+        databaseReady = false;
+
         console.error(
             "❌ Unexpected PostgreSQL pool error:",
             error
@@ -1770,5 +1934,9 @@ module.exports = {
     // Welcome DM
     setWelcomeDm,
     removeWelcomeDm,
-    getWelcomeDm
+    getWelcomeDm,
+
+    // Message-length settings
+    setLongMessagesAllowed,
+    getLongMessagesAllowed
 };
