@@ -31,9 +31,11 @@ const {
     getAutoCategoryMessages,
     getBanTriggerChannel,
     getBlockedWords,
+    getLongMessagesAllowed,
     getUnauthorizedRoles,
     getUnauthorizedUsers,
     getWelcomeDm,
+    isMessageTooLong,
     isLockedDown,
     isSuspiciousAccount,
     isWhitelisted,
@@ -46,6 +48,7 @@ const {
     removeWelcomeDm,
     setAutoCategoryMessage,
     setBanTriggerChannel,
+    setLongMessagesAllowed,
     setWelcomeDm,
     unauthorizeRole,
     unauthorizeUser,
@@ -1192,6 +1195,98 @@ async function checkBlockedWordMessage(
 }
 
 // ========================================
+// MESSAGE LENGTH PROTECTION
+// ========================================
+
+async function checkMessageLength(
+    message,
+    source = "new message"
+) {
+    try {
+        if (
+            !databaseReady ||
+            !message?.guild ||
+            !message?.author ||
+            message.author.bot ||
+            message.webhookId ||
+            !isMessageTooLong(
+                message.content
+            )
+        ) {
+            return false;
+        }
+
+        const longMessagesAllowed =
+            await getLongMessagesAllowed(
+                message.guild
+            );
+
+        if (longMessagesAllowed) {
+            return false;
+        }
+
+        const characterLimit =
+            config.messageCharacterLimit ??
+            1000;
+
+        if (!message.deletable) {
+            console.warn(
+                `[MESSAGE LIMIT] Could not delete ${source} from ` +
+                `${message.author.tag} in ${message.guild.name}.`
+            );
+
+            return false;
+        }
+
+        await message.delete();
+
+        console.log(
+            `[MESSAGE LIMIT] Deleted ${source} from ${message.author.tag} ` +
+            `in ${message.guild.name}: ${message.content.length} characters.`
+        );
+
+        const warning =
+            await message.channel
+                .send({
+                    content:
+                        `${message.author}, your message was deleted because ` +
+                        `this server limits messages to ${characterLimit} characters.`,
+
+                    allowedMentions: {
+                        users: [
+                            message.author.id
+                        ]
+                    }
+                })
+                .catch(
+                    () => null
+                );
+
+        if (warning) {
+            setTimeout(
+                () => {
+                    warning.delete()
+                        .catch(
+                            () => null
+                        );
+                },
+                10000
+            );
+        }
+
+        return true;
+
+    } catch (error) {
+        console.error(
+            "❌ Message-length protection error:",
+            error
+        );
+
+        return false;
+    }
+}
+
+// ========================================
 // NEW MESSAGE HANDLER
 // ========================================
 
@@ -1266,6 +1361,20 @@ client.on(
             }
 
             // ====================================
+            // MESSAGE LENGTH PROTECTION
+            // ====================================
+
+            const messageTooLong =
+                await checkMessageLength(
+                    message,
+                    "new message"
+                );
+
+            if (messageTooLong) {
+                return;
+            }
+
+            // ====================================
             // IMAGE-SPAM PROTECTION
             // ====================================
 
@@ -1320,6 +1429,16 @@ client.on(
                 oldMessage?.content ===
                 newMessage.content
             ) {
+                return;
+            }
+
+            const messageTooLong =
+                await checkMessageLength(
+                    newMessage,
+                    "edited message"
+                );
+
+            if (messageTooLong) {
                 return;
             }
 
@@ -1571,6 +1690,73 @@ async function handleAdminCommand(
     interaction,
     command
 ) {
+    // ====================================
+    // MESSAGE LENGTH SETTINGS
+    // ====================================
+
+    if (
+        command ===
+        "long-messages-allow"
+    ) {
+        const saved =
+            await setLongMessagesAllowed(
+                interaction.guild,
+                true
+            );
+
+        await safeReply(
+            interaction,
+            saved
+                ? "✅ Messages longer than 1,000 characters are now allowed in this server."
+                : "❌ Could not update the message-length setting."
+        );
+
+        return true;
+    }
+
+    if (
+        command ===
+        "long-messages-restrict"
+    ) {
+        const saved =
+            await setLongMessagesAllowed(
+                interaction.guild,
+                false
+            );
+
+        await safeReply(
+            interaction,
+            saved
+                ? "✅ Messages longer than 1,000 characters will now be deleted."
+                : "❌ Could not update the message-length setting."
+        );
+
+        return true;
+    }
+
+    if (
+        command ===
+        "long-messages-status"
+    ) {
+        const allowed =
+            await getLongMessagesAllowed(
+                interaction.guild
+            );
+
+        const characterLimit =
+            config.messageCharacterLimit ??
+            1000;
+
+        await safeReply(
+            interaction,
+            allowed
+                ? `🟢 Long messages are allowed. Discord's normal 2,000-character limit applies.`
+                : `🔒 Messages longer than ${characterLimit} characters are currently deleted.`
+        );
+
+        return true;
+    }
+
     if (
         command ===
         "welcome-dm-remove"
@@ -2386,7 +2572,10 @@ client.on(
                     "ban-channel-remove",
                     "ban-channel-status",
                     "welcome-dm-remove",
-                    "welcome-dm-status"
+                    "welcome-dm-status",
+                    "long-messages-allow",
+                    "long-messages-restrict",
+                    "long-messages-status"
                 ]);
 
             if (
