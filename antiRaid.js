@@ -20,8 +20,9 @@ const guildStates = new Map();
 // SERVER ID HELPER
 // ========================================
 
-// This is not a fixed GUILD_ID environment variable.
-// It retrieves the ID of whichever server is using the bot.
+// This retrieves the ID of whichever server
+// is currently using Guardian. It does not
+// require a fixed GUILD_ID environment variable.
 function getServerId(guild) {
     if (!guild) {
         return null;
@@ -43,23 +44,31 @@ function getServerId(guild) {
 // ========================================
 
 function getGuildState(guild) {
-    const serverId = getServerId(guild);
+    const serverId =
+        getServerId(guild);
 
     if (!serverId) {
         return null;
     }
 
     if (!guildStates.has(serverId)) {
-        guildStates.set(serverId, {
-            joins: [],
-            lockdown: false,
-            lockdownTimer: null,
-            whitelistedUsers: new Set(),
-            imageSpam: new Map()
-        });
+        guildStates.set(
+            serverId,
+            {
+                joins: [],
+                lockdown: false,
+                lockdownTimer: null,
+                whitelistedUsers:
+                    new Set(),
+                imageSpam:
+                    new Map()
+            }
+        );
     }
 
-    return guildStates.get(serverId);
+    return guildStates.get(
+        serverId
+    );
 }
 
 // ========================================
@@ -81,21 +90,31 @@ function removeOldJoins(state) {
     state.joins =
         state.joins.filter(
             join =>
-                join.timestamp >= cutoff
+                join.timestamp >=
+                cutoff
         );
 }
 
-function recordJoin(guild, userId) {
+function recordJoin(
+    guild,
+    userId
+) {
     const state =
         getGuildState(guild);
 
-    if (!state || !userId) {
+    if (
+        !state ||
+        !userId
+    ) {
         return 0;
     }
 
     state.joins.push({
-        userId: String(userId),
-        timestamp: Date.now()
+        userId:
+            String(userId),
+
+        timestamp:
+            Date.now()
     });
 
     removeOldJoins(state);
@@ -123,7 +142,8 @@ function getRecentJoinCount(guild) {
 function isSuspiciousAccount(member) {
     if (
         !member?.user ||
-        typeof member.user.createdTimestamp !==
+        typeof member.user
+            .createdTimestamp !==
             "number"
     ) {
         return false;
@@ -153,7 +173,9 @@ function isWhitelisted(member) {
     }
 
     const state =
-        getGuildState(member.guild);
+        getGuildState(
+            member.guild
+        );
 
     if (!state) {
         return false;
@@ -164,11 +186,17 @@ function isWhitelisted(member) {
         .has(member.id);
 }
 
-function whitelistUser(guild, userId) {
+function whitelistUser(
+    guild,
+    userId
+) {
     const state =
         getGuildState(guild);
 
-    if (!state || !userId) {
+    if (
+        !state ||
+        !userId
+    ) {
         return false;
     }
 
@@ -179,17 +207,25 @@ function whitelistUser(guild, userId) {
     return true;
 }
 
-function removeWhitelist(guild, userId) {
+function removeWhitelist(
+    guild,
+    userId
+) {
     const state =
         getGuildState(guild);
 
-    if (!state || !userId) {
+    if (
+        !state ||
+        !userId
+    ) {
         return false;
     }
 
     return state
         .whitelistedUsers
-        .delete(String(userId));
+        .delete(
+            String(userId)
+        );
 }
 
 // ========================================
@@ -198,7 +234,8 @@ function removeWhitelist(guild, userId) {
 
 async function kickMember(
     member,
-    reason = "Guardian Anti-Raid protection"
+    reason =
+        "Guardian Anti-Raid protection"
 ) {
     try {
         if (!member?.kickable) {
@@ -213,7 +250,9 @@ async function kickMember(
             return false;
         }
 
-        await member.kick(reason);
+        await member.kick(
+            reason
+        );
 
         console.log(
             `[KICKED] ${
@@ -285,8 +324,12 @@ async function lockdown(
         guild.channels.cache.values()
     ) {
         if (
-            !isLockableChannel(channel) ||
-            !channel.permissionOverwrites?.edit
+            !isLockableChannel(
+                channel
+            ) ||
+            !channel
+                .permissionOverwrites
+                ?.edit
         ) {
             continue;
         }
@@ -297,7 +340,8 @@ async function lockdown(
                 .edit(
                     guild.roles.everyone,
                     {
-                        SendMessages: false
+                        SendMessages:
+                            false
                     },
                     {
                         reason:
@@ -380,7 +424,8 @@ async function unlock(guild) {
             state.lockdownTimer
         );
 
-        state.lockdownTimer = null;
+        state.lockdownTimer =
+            null;
     }
 
     let changedChannels = 0;
@@ -390,8 +435,12 @@ async function unlock(guild) {
         guild.channels.cache.values()
     ) {
         if (
-            !isLockableChannel(channel) ||
-            !channel.permissionOverwrites?.edit
+            !isLockableChannel(
+                channel
+            ) ||
+            !channel
+                .permissionOverwrites
+                ?.edit
         ) {
             continue;
         }
@@ -402,7 +451,8 @@ async function unlock(guild) {
                 .edit(
                     guild.roles.everyone,
                     {
-                        SendMessages: null
+                        SendMessages:
+                            null
                     },
                     {
                         reason:
@@ -440,7 +490,8 @@ async function unlock(guild) {
 function isLockedDown(guild) {
     return (
         getGuildState(guild)
-            ?.lockdown === true
+            ?.lockdown ===
+        true
     );
 }
 
@@ -449,7 +500,10 @@ function isLockedDown(guild) {
 // ========================================
 
 function cleanBlockedWord(word) {
-    if (typeof word !== "string") {
+    if (
+        typeof word !==
+        "string"
+    ) {
         return "";
     }
 
@@ -479,7 +533,8 @@ async function addBlockedWord(
     if (
         !serverId ||
         !cleanWord ||
-        cleanWord.length > maxLength ||
+        cleanWord.length >
+            maxLength ||
         /[\r\n]/.test(cleanWord)
     ) {
         return false;
@@ -524,7 +579,9 @@ async function getBlockedWords(guild) {
 
     const words =
         await database
-            .getBlockedWords(serverId);
+            .getBlockedWords(
+                serverId
+            );
 
     if (!Array.isArray(words)) {
         return [];
@@ -535,7 +592,7 @@ async function getBlockedWords(guild) {
             word => {
                 if (
                     typeof word ===
-                        "string"
+                    "string"
                 ) {
                     return cleanBlockedWord(
                         word
@@ -559,7 +616,8 @@ async function findBlockedWord(
 
     if (
         !serverId ||
-        typeof content !== "string" ||
+        typeof content !==
+            "string" ||
         !content
     ) {
         return null;
@@ -582,7 +640,10 @@ async function authorizeUser(
     const serverId =
         getServerId(guild);
 
-    if (!serverId || !userId) {
+    if (
+        !serverId ||
+        !userId
+    ) {
         return false;
     }
 
@@ -599,7 +660,10 @@ async function unauthorizeUser(
     const serverId =
         getServerId(guild);
 
-    if (!serverId || !userId) {
+    if (
+        !serverId ||
+        !userId
+    ) {
         return false;
     }
 
@@ -616,7 +680,10 @@ async function isAuthorizedUser(
     const serverId =
         getServerId(guild);
 
-    if (!serverId || !userId) {
+    if (
+        !serverId ||
+        !userId
+    ) {
         return false;
     }
 
@@ -633,7 +700,10 @@ async function isUnauthorizedUser(
     const serverId =
         getServerId(guild);
 
-    if (!serverId || !userId) {
+    if (
+        !serverId ||
+        !userId
+    ) {
         return false;
     }
 
@@ -643,7 +713,9 @@ async function isUnauthorizedUser(
     );
 }
 
-async function getAuthorizedUsers(guild) {
+async function getAuthorizedUsers(
+    guild
+) {
     const serverId =
         getServerId(guild);
 
@@ -651,12 +723,15 @@ async function getAuthorizedUsers(guild) {
         return [];
     }
 
-    return database.getAuthorizedUsers(
-        serverId
-    );
+    return database
+        .getAuthorizedUsers(
+            serverId
+        );
 }
 
-async function getUnauthorizedUsers(guild) {
+async function getUnauthorizedUsers(
+    guild
+) {
     const serverId =
         getServerId(guild);
 
@@ -664,9 +739,10 @@ async function getUnauthorizedUsers(guild) {
         return [];
     }
 
-    return database.getUnauthorizedUsers(
-        serverId
-    );
+    return database
+        .getUnauthorizedUsers(
+            serverId
+        );
 }
 
 // ========================================
@@ -680,7 +756,10 @@ async function authorizeRole(
     const serverId =
         getServerId(guild);
 
-    if (!serverId || !roleId) {
+    if (
+        !serverId ||
+        !roleId
+    ) {
         return false;
     }
 
@@ -697,7 +776,10 @@ async function unauthorizeRole(
     const serverId =
         getServerId(guild);
 
-    if (!serverId || !roleId) {
+    if (
+        !serverId ||
+        !roleId
+    ) {
         return false;
     }
 
@@ -714,7 +796,10 @@ async function isAuthorizedRole(
     const serverId =
         getServerId(guild);
 
-    if (!serverId || !roleId) {
+    if (
+        !serverId ||
+        !roleId
+    ) {
         return false;
     }
 
@@ -731,7 +816,10 @@ async function isUnauthorizedRole(
     const serverId =
         getServerId(guild);
 
-    if (!serverId || !roleId) {
+    if (
+        !serverId ||
+        !roleId
+    ) {
         return false;
     }
 
@@ -741,7 +829,9 @@ async function isUnauthorizedRole(
     );
 }
 
-async function getAuthorizedRoles(guild) {
+async function getAuthorizedRoles(
+    guild
+) {
     const serverId =
         getServerId(guild);
 
@@ -749,12 +839,15 @@ async function getAuthorizedRoles(guild) {
         return [];
     }
 
-    return database.getAuthorizedRoles(
-        serverId
-    );
+    return database
+        .getAuthorizedRoles(
+            serverId
+        );
 }
 
-async function getUnauthorizedRoles(guild) {
+async function getUnauthorizedRoles(
+    guild
+) {
     const serverId =
         getServerId(guild);
 
@@ -762,9 +855,10 @@ async function getUnauthorizedRoles(guild) {
         return [];
     }
 
-    return database.getUnauthorizedRoles(
-        serverId
-    );
+    return database
+        .getUnauthorizedRoles(
+            serverId
+        );
 }
 
 // ========================================
@@ -819,9 +913,10 @@ async function canUseGuardian(member) {
 
     // Explicit role denial takes priority.
     for (const role of roles) {
-        // The @everyone role ID equals
-        // the current server ID.
-        if (role.id === serverId) {
+        if (
+            role.id ===
+            serverId
+        ) {
             continue;
         }
 
@@ -847,7 +942,10 @@ async function canUseGuardian(member) {
 
     // Authorized role.
     for (const role of roles) {
-        if (role.id === serverId) {
+        if (
+            role.id ===
+            serverId
+        ) {
             continue;
         }
 
@@ -877,7 +975,8 @@ async function setAutoCategoryMessage(
         getServerId(guild);
 
     const cleanMessage =
-        typeof message === "string"
+        typeof message ===
+            "string"
             ? message.trim()
             : "";
 
@@ -889,7 +988,8 @@ async function setAutoCategoryMessage(
         !serverId ||
         !categoryId ||
         !cleanMessage ||
-        cleanMessage.length > maxLength
+        cleanMessage.length >
+            maxLength
     ) {
         return false;
     }
@@ -909,7 +1009,10 @@ async function removeAutoCategoryMessage(
     const serverId =
         getServerId(guild);
 
-    if (!serverId || !categoryId) {
+    if (
+        !serverId ||
+        !categoryId
+    ) {
         return false;
     }
 
@@ -927,7 +1030,10 @@ async function getAutoCategoryMessage(
     const serverId =
         getServerId(guild);
 
-    if (!serverId || !categoryId) {
+    if (
+        !serverId ||
+        !categoryId
+    ) {
         return null;
     }
 
@@ -970,7 +1076,10 @@ async function setBanTriggerChannel(
     const serverId =
         getServerId(guild);
 
-    if (!serverId || !channelId) {
+    if (
+        !serverId ||
+        !channelId
+    ) {
         return false;
     }
 
@@ -1026,12 +1135,14 @@ async function setWelcomeDm(
         getServerId(guild);
 
     const cleanMessage =
-        typeof message === "string"
+        typeof message ===
+            "string"
             ? message.trim()
             : "";
 
     const cleanImageUrl =
-        typeof imageUrl === "string"
+        typeof imageUrl ===
+            "string"
             ? imageUrl.trim()
             : "";
 
@@ -1067,8 +1178,10 @@ async function setWelcomeDm(
                 );
 
             if (
-                parsedUrl.protocol !== "https:" &&
-                parsedUrl.protocol !== "http:"
+                parsedUrl.protocol !==
+                    "https:" &&
+                parsedUrl.protocol !==
+                    "http:"
             ) {
                 return false;
             }
@@ -1142,6 +1255,62 @@ async function getWelcomeDm(guild) {
 }
 
 // ========================================
+// MESSAGE LENGTH PROTECTION
+// ========================================
+
+async function setLongMessagesAllowed(
+    guild,
+    allowed
+) {
+    const serverId =
+        getServerId(guild);
+
+    if (!serverId) {
+        return false;
+    }
+
+    return database
+        .setLongMessagesAllowed(
+            serverId,
+            allowed === true
+        );
+}
+
+async function getLongMessagesAllowed(
+    guild
+) {
+    const serverId =
+        getServerId(guild);
+
+    if (!serverId) {
+        return false;
+    }
+
+    return database
+        .getLongMessagesAllowed(
+            serverId
+        );
+}
+
+function isMessageTooLong(content) {
+    if (
+        typeof content !==
+        "string"
+    ) {
+        return false;
+    }
+
+    const maximumLength =
+        config.messageCharacterLimit ??
+        1000;
+
+    return (
+        content.length >
+        maximumLength
+    );
+}
+
+// ========================================
 // IMAGE ATTACHMENT CHECK
 // ========================================
 
@@ -1181,7 +1350,9 @@ async function createImageHash(
 ) {
     if (
         !attachment?.url ||
-        !isImageAttachment(attachment)
+        !isImageAttachment(
+            attachment
+        )
     ) {
         return null;
     }
@@ -1193,7 +1364,8 @@ async function createImageHash(
     if (
         typeof attachment.size ===
             "number" &&
-        attachment.size > maximumSize
+        attachment.size >
+            maximumSize
     ) {
         return null;
     }
@@ -1211,7 +1383,8 @@ async function createImageHash(
         }
 
         const arrayBuffer =
-            await response.arrayBuffer();
+            await response
+                .arrayBuffer();
 
         if (
             arrayBuffer.byteLength >
@@ -1220,7 +1393,9 @@ async function createImageHash(
             return null;
         }
 
-        return createHash("sha256")
+        return createHash(
+            "sha256"
+        )
             .update(
                 Buffer.from(
                     arrayBuffer
@@ -1255,7 +1430,9 @@ async function deleteSpamMessages(
         ].map(
             async message => {
                 try {
-                    if (message?.deletable) {
+                    if (
+                        message?.deletable
+                    ) {
                         await message.delete();
                     }
 
@@ -1503,6 +1680,11 @@ module.exports = {
     setWelcomeDm,
     removeWelcomeDm,
     getWelcomeDm,
+
+    // MESSAGE LENGTH PROTECTION
+    setLongMessagesAllowed,
+    getLongMessagesAllowed,
+    isMessageTooLong,
 
     // IMAGE-SPAM PROTECTION
     checkImageSpam
