@@ -253,7 +253,35 @@ const commands = [
         .setDescription(
             "Show the current new-member welcome DM settings."
         ),
-    
+
+    // ====================================
+    // MESSAGE LENGTH PROTECTION
+    // ====================================
+
+    new SlashCommandBuilder()
+        .setName(
+            "long-messages-allow"
+        )
+        .setDescription(
+            "Allow server messages longer than 1,000 characters."
+        ),
+
+    new SlashCommandBuilder()
+        .setName(
+            "long-messages-restrict"
+        )
+        .setDescription(
+            "Delete server messages longer than 1,000 characters."
+        ),
+
+    new SlashCommandBuilder()
+        .setName(
+            "long-messages-status"
+        )
+        .setDescription(
+            "Show the server's current message-length setting."
+        ),
+
     // ====================================
     // BAN-TRIGGER CHANNEL
     // ====================================
@@ -306,9 +334,13 @@ function checkForDuplicateNames() {
 
     const duplicateNames =
         commandNames.filter(
-            (name, index) =>
-                commandNames.indexOf(name) !==
+            (
+                name,
                 index
+            ) =>
+                commandNames.indexOf(
+                    name
+                ) !== index
         );
 
     if (duplicateNames.length > 0) {
@@ -321,7 +353,9 @@ function checkForDuplicateNames() {
 
         throw new Error(
             `Duplicate command names found: ${
-                uniqueDuplicates.join(", ")
+                uniqueDuplicates.join(
+                    ", "
+                )
             }`
         );
     }
@@ -361,7 +395,10 @@ function waitForReady(client) {
     }
 
     return new Promise(
-        (resolve, reject) => {
+        (
+            resolve,
+            reject
+        ) => {
             const timeout =
                 setTimeout(
                     () => {
@@ -421,14 +458,17 @@ async function removeOldGuildCommands() {
         try {
             const oldCommands =
                 await rest.get(
-                    Routes.applicationGuildCommands(
-                        process.env.CLIENT_ID,
-                        guildId
-                    )
+                    Routes
+                        .applicationGuildCommands(
+                            process.env.CLIENT_ID,
+                            guildId
+                        )
                 );
 
             if (
-                !Array.isArray(oldCommands) ||
+                !Array.isArray(
+                    oldCommands
+                ) ||
                 oldCommands.length === 0
             ) {
                 console.log(
@@ -442,10 +482,11 @@ async function removeOldGuildCommands() {
             }
 
             await rest.put(
-                Routes.applicationGuildCommands(
-                    process.env.CLIENT_ID,
-                    guildId
-                ),
+                Routes
+                    .applicationGuildCommands(
+                        process.env.CLIENT_ID,
+                        guildId
+                    ),
                 {
                     body: []
                 }
@@ -487,14 +528,15 @@ async function registerGlobalCommands() {
     );
 
     // PUT replaces the complete global command list.
-    // It does not add another copy to the existing list.
+    // This does not create duplicate commands.
     const deployed =
         await rest.put(
             Routes.applicationCommands(
                 process.env.CLIENT_ID
             ),
             {
-                body: commands
+                body:
+                    commands
             }
         );
 
@@ -543,7 +585,9 @@ async function deployCommands() {
         await readyPromise;
 
         console.log(
-            `🤖 Connected as ${deployClient.user.tag}`
+            `🤖 Connected as ${
+                deployClient.user.tag
+            }`
         );
 
         const clearedGuilds =
@@ -573,7 +617,9 @@ async function deployCommands() {
         );
 
         console.log(
-            `🤖 Application ID: ${process.env.CLIENT_ID}`
+            `🤖 Application ID: ${
+                process.env.CLIENT_ID
+            }`
         );
 
         console.log(
@@ -619,7 +665,9 @@ async function deployCommands() {
             );
         }
 
-        if (error?.status === 404) {
+        if (
+            error?.status === 404
+        ) {
             console.error(
                 "❌ Check your CLIENT_ID."
             );
@@ -628,12 +676,7 @@ async function deployCommands() {
         process.exitCode = 1;
 
     } finally {
-        if (
-            deployClient &&
-            !deployClient.destroyed
-        ) {
-            deployClient.destroy();
-        }
+        deployClient.destroy();
     }
 }
 
