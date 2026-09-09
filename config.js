@@ -42,6 +42,19 @@ module.exports = {
     welcomeDmImageUrlMaxLength: 2048,
 
     // ========================================
+    // MESSAGE LENGTH PROTECTION
+    // ========================================
+
+    // Messages longer than this amount will
+    // be deleted while the server's message
+    // length restriction is enabled.
+    messageCharacterLimit: 1000,
+
+    // When a server has no saved setting,
+    // Guardian restricts messages by default.
+    restrictLongMessagesByDefault: true,
+
+    // ========================================
     // SERVER LOCKDOWN
     // ========================================
 
