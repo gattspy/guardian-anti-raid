@@ -7,6 +7,7 @@ const {
     ChannelType,
     Client,
     EmbedBuilder,
+    Events,
     GatewayIntentBits,
     MessageFlags,
     ModalBuilder,
@@ -364,7 +365,7 @@ async function guardianAccessAllowed(
 // ========================================
 
 client.once(
-    "ready",
+    Events.ClientReady,
     readyClient => {
         console.log(
             "================================"
